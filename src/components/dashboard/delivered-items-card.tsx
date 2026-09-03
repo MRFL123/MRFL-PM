@@ -20,12 +20,14 @@ import { CSS } from "@dnd-kit/utilities";
 import { ExternalLink, GripVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { CollapsiblePanel } from "@/components/dashboard/collapsible-panel";
 import { DeliveredItemForm } from "@/components/dashboard/delivered-item-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { sortDeliveredItems } from "@/lib/projects";
 import { SAVE_ERROR_MESSAGE, useProjects } from "@/lib/store";
 import type { DeliveredItem, DeliveredItemInput, Project } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 function DeliveredItemRow({
   item,
@@ -83,7 +85,15 @@ function DeliveredItemRow({
   );
 }
 
-export function DeliveredItemsCard({ project }: { project: Project }) {
+export function DeliveredItemsCard({
+  project,
+  expanded,
+  onToggle,
+}: {
+  project: Project;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
   const { addDeliveredItem, updateDeliveredItem, deleteDeliveredItem, moveDeliveredItem } =
     useProjects();
   const [formOpen, setFormOpen] = useState(false);
@@ -101,59 +111,75 @@ export function DeliveredItemsCard({ project }: { project: Project }) {
   };
 
   return (
-    <Card className="h-full min-h-[18rem] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <CardHeader className="border-b">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-base font-semibold">Delivered Items</h2>
-          <Button size="sm" variant="outline" onClick={openCreate}>
-            <Plus data-icon="inline-start" />
-            Add
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {items.length === 0 ? (
-          <div className="flex flex-col items-start">
-            <p className="text-sm text-muted-foreground">No delivered items yet.</p>
-            <Button className="mt-3" size="sm" variant="outline" onClick={openCreate}>
-              + Add Delivered Item
+    <Card
+      className={cn(
+        "bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
+        expanded && "h-full min-h-[18rem]"
+      )}
+    >
+      <CollapsiblePanel
+        title="Delivered Items"
+        expanded={expanded}
+        onToggle={onToggle}
+        headerClassName={cn("px-(--card-spacing)", expanded && "border-b pb-(--card-spacing)")}
+        headerStart={
+          <CardHeader className="px-0">
+            <h2 className="text-base font-semibold">Delivered Items</h2>
+          </CardHeader>
+        }
+        headerEnd={
+          expanded ? (
+            <Button size="sm" variant="outline" onClick={openCreate}>
+              <Plus data-icon="inline-start" />
+              Add
             </Button>
-          </div>
-        ) : (
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={async (event: DragEndEvent) => {
-              const { active, over } = event;
-              if (!over || active.id === over.id) return;
-              try {
-                await moveDeliveredItem(project.id, String(active.id), String(over.id));
-              } catch (error) {
-                toast.error(error instanceof Error ? error.message : SAVE_ERROR_MESSAGE);
-              }
-            }}
-          >
-            <SortableContext
-              items={items.map((item) => item.id)}
-              strategy={verticalListSortingStrategy}
+          ) : null
+        }
+      >
+        <CardContent className="pt-(--card-spacing)">
+          {items.length === 0 ? (
+            <div className="flex flex-col items-start">
+              <p className="text-sm text-muted-foreground">No delivered items yet.</p>
+              <Button className="mt-3" size="sm" variant="outline" onClick={openCreate}>
+                + Add Delivered Item
+              </Button>
+            </div>
+          ) : (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={async (event: DragEndEvent) => {
+                const { active, over } = event;
+                if (!over || active.id === over.id) return;
+                try {
+                  await moveDeliveredItem(project.id, String(active.id), String(over.id));
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : SAVE_ERROR_MESSAGE);
+                }
+              }}
             >
-              <ul className="divide-y divide-border">
-                {items.map((item) => (
-                  <DeliveredItemRow
-                    key={item.id}
-                    item={item}
-                    onEdit={() => {
-                      setEditing(item);
-                      setFormOpen(true);
-                    }}
-                    onDelete={() => setDeleting(item)}
-                  />
-                ))}
-              </ul>
-            </SortableContext>
-          </DndContext>
-        )}
-      </CardContent>
+              <SortableContext
+                items={items.map((item) => item.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <ul className="divide-y divide-border">
+                  {items.map((item) => (
+                    <DeliveredItemRow
+                      key={item.id}
+                      item={item}
+                      onEdit={() => {
+                        setEditing(item);
+                        setFormOpen(true);
+                      }}
+                      onDelete={() => setDeleting(item)}
+                    />
+                  ))}
+                </ul>
+              </SortableContext>
+            </DndContext>
+          )}
+        </CardContent>
+      </CollapsiblePanel>
 
       <DeliveredItemForm
         open={formOpen}
