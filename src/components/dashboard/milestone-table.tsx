@@ -18,7 +18,6 @@ import {
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { CollapsiblePanel } from "@/components/dashboard/collapsible-panel";
 import { MilestoneForm } from "@/components/dashboard/milestone-form";
 import { MilestoneRow } from "@/components/dashboard/milestone-row";
 import { Button } from "@/components/ui/button";
@@ -33,15 +32,7 @@ import { projectProgress, sortMilestones } from "@/lib/projects";
 import { SAVE_ERROR_MESSAGE, useProjects } from "@/lib/store";
 import type { Milestone, MilestoneInput, Project } from "@/lib/types";
 
-export function MilestoneTable({
-  project,
-  expanded,
-  onToggle,
-}: {
-  project: Project;
-  expanded: boolean;
-  onToggle: () => void;
-}) {
+export function MilestoneTable({ project }: { project: Project }) {
   const { addMilestone, updateMilestone, deleteMilestone, moveMilestone } =
     useProjects();
   const [formOpen, setFormOpen] = useState(false);
@@ -65,39 +56,28 @@ export function MilestoneTable({
   };
 
   return (
-    <section className="rounded-xl border border-border bg-white px-4 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <CollapsiblePanel
-        title="Project Progress"
-        expanded={expanded}
-        onToggle={onToggle}
-        headerClassName={expanded ? "border-b border-border pb-4" : undefined}
-        headerStart={
-          <div>
-            <h2 className="text-base font-semibold">Project Progress</h2>
-            {expanded ? (
-              <p className="text-sm text-muted-foreground">
-                {project.milestones.length > 0
-                  ? `${projectProgress(project)}% complete · milestones, status, and dates.`
-                  : "Milestones, status, and dates for this project."}
-              </p>
-            ) : null}
-          </div>
-        }
-        headerEnd={
-          expanded ? (
-            <Button
-              onClick={() => {
-                setEditing(null);
-                setFormOpen(true);
-              }}
-            >
-              <Plus data-icon="inline-start" />
-              Add Milestone
-            </Button>
-          ) : null
-        }
-      >
-        {milestones.length === 0 ? (
+    <section className="rounded-xl border border-border bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-base font-semibold">Project Progress</h2>
+          <p className="text-sm text-muted-foreground">
+            {project.milestones.length > 0
+              ? `${projectProgress(project)}% complete · milestones, status, and dates.`
+              : "Milestones, status, and dates for this project."}
+          </p>
+        </div>
+        <Button
+          onClick={() => {
+            setEditing(null);
+            setFormOpen(true);
+          }}
+        >
+          <Plus data-icon="inline-start" />
+          Add Milestone
+        </Button>
+      </div>
+
+      {milestones.length === 0 ? (
         <div className="flex flex-col items-center px-6 py-14 text-center">
           <p className="text-sm font-medium">No milestones added yet.</p>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -175,7 +155,6 @@ export function MilestoneTable({
           </SortableContext>
         </DndContext>
       )}
-      </CollapsiblePanel>
 
       <MilestoneForm
         open={formOpen}

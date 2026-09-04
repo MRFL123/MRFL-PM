@@ -1,7 +1,9 @@
 "use client";
 
 import { FolderKanban } from "lucide-react";
+import { ProjectCard } from "@/components/projects/project-card";
 import { ProjectRow } from "@/components/projects/project-row";
+import type { ProjectListView } from "@/components/projects/project-view-switcher";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -15,14 +17,18 @@ import type { Project, Status } from "@/lib/types";
 export function ProjectList({
   projects,
   filtered,
+  view,
   onCreate,
+  onClearFilters,
   onEdit,
   onDelete,
   onStatusChange,
 }: {
   projects: Project[];
   filtered: Project[];
+  view: ProjectListView;
   onCreate: () => void;
+  onClearFilters: () => void;
   onEdit: (project: Project) => void;
   onDelete: (project: Project) => void;
   onStatusChange: (project: Project, status: Status) => void;
@@ -46,14 +52,35 @@ export function ProjectList({
 
   if (filtered.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border bg-white px-6 py-12 text-center text-sm text-muted-foreground">
-        No projects match this search or filter.
+      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-white px-6 py-12 text-center">
+        <h2 className="text-base font-semibold">No projects found.</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Try a different search or clear the current filters.
+        </p>
+        <Button className="mt-4" variant="outline" onClick={onClearFilters}>
+          Clear Filters
+        </Button>
+      </div>
+    );
+  }
+
+  if (view === "card") {
+    return (
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {filtered.map((project) => (
+          <ProjectCard
+            key={project.id}
+            project={project}
+            onEdit={() => onEdit(project)}
+            onDelete={() => onDelete(project)}
+          />
+        ))}
       </div>
     );
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <div className="overflow-x-auto rounded-xl border border-border bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">

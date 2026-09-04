@@ -9,8 +9,7 @@ import { MilestoneTable } from "@/components/dashboard/milestone-table";
 import { PrerequisiteCard } from "@/components/dashboard/prerequisite-card";
 import { ProjectHeader } from "@/components/dashboard/project-header";
 import { ProjectForm } from "@/components/projects/project-form";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { useDashboardCollapse } from "@/lib/dashboard-collapse";
+import { buttonVariants } from "@/components/ui/button";
 import { exportProjectReport } from "@/lib/export-pdf";
 import { SAVE_ERROR_MESSAGE, useProjects } from "@/lib/store";
 import type { ProjectDashboardData, ProjectInput } from "@/lib/types";
@@ -23,7 +22,6 @@ export function ProjectDashboard({ projectId }: { projectId: string }) {
   const [projectFormOpen, setProjectFormOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const dashboard = editing && draft ? draft : project?.dashboard;
-  const sections = useDashboardCollapse(projectId);
 
   if (!ready) {
     return (
@@ -110,33 +108,10 @@ export function ProjectDashboard({ projectId }: { projectId: string }) {
         exporting={exporting}
       />
 
-      <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-label="Expand all dashboard sections"
-          onClick={sections.expandAll}
-        >
-          Expand All
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-label="Collapse all dashboard sections"
-          onClick={sections.collapseAll}
-        >
-          Collapse All
-        </Button>
-      </div>
-
-      <div className="mt-3 grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
+      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <EditableContentCard
           card={dashboard.card1}
           editing={editing}
-          expanded={sections.expanded.weeklyUpdates}
-          onToggle={() => sections.toggle("weeklyUpdates")}
           onChange={(card1) =>
             setDraft((current) => ({ ...(current ?? dashboard), card1 }))
           }
@@ -144,8 +119,6 @@ export function ProjectDashboard({ projectId }: { projectId: string }) {
         <PrerequisiteCard
           card={dashboard.card2}
           editing={editing}
-          expanded={sections.expanded.prerequisites}
-          onToggle={() => sections.toggle("prerequisites")}
           onChange={(updater) =>
             setDraft((current) => {
               const base = current ?? dashboard;
@@ -153,19 +126,11 @@ export function ProjectDashboard({ projectId }: { projectId: string }) {
             })
           }
         />
-        <DeliveredItemsCard
-          project={project}
-          expanded={sections.expanded.deliveredItems}
-          onToggle={() => sections.toggle("deliveredItems")}
-        />
+        <DeliveredItemsCard project={project} />
       </div>
 
       <div className="mt-4">
-        <MilestoneTable
-          project={project}
-          expanded={sections.expanded.progress}
-          onToggle={() => sections.toggle("progress")}
-        />
+        <MilestoneTable project={project} />
       </div>
 
       <ProjectForm

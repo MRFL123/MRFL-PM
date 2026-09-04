@@ -1,4 +1,4 @@
-import { format, isValid, parseISO, startOfMonth, endOfMonth } from "date-fns";
+import { format, formatDistanceToNow, isValid, parseISO, startOfMonth, endOfMonth } from "date-fns";
 import type { DateFilter, Project } from "@/lib/types";
 
 export function formatDisplayDate(value: string | null | undefined): string {
@@ -37,6 +37,13 @@ export function formatLastUpdated(value: string | null | undefined): string {
   const parsed = parseISO(value);
   if (!isValid(parsed)) return "—";
   return format(parsed, "d MMM");
+}
+
+export function formatRelativeUpdated(value: string | null | undefined): string {
+  if (!value) return "—";
+  const parsed = parseISO(value);
+  if (!isValid(parsed)) return "—";
+  return formatDistanceToNow(parsed, { addSuffix: true });
 }
 
 export function formatGeneratedDate(value = new Date()): string {

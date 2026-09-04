@@ -5,52 +5,32 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-function isHeaderIgnored(target: EventTarget | null) {
-  return (
-    target instanceof Element &&
-    Boolean(
-      target.closest(
-        "input, textarea, select, a, button, [contenteditable='true'], [data-collapse-ignore]"
-      )
-    )
-  );
-}
-
-export function CollapsiblePanel({
+export function CollapsibleSection({
   title,
   expanded,
   onToggle,
-  headerStart,
-  headerEnd,
   children,
-  className,
-  headerClassName,
 }: {
   title: string;
   expanded: boolean;
   onToggle: () => void;
-  headerStart: ReactNode;
-  headerEnd?: ReactNode;
   children: ReactNode;
-  className?: string;
-  headerClassName?: string;
 }) {
   const contentId = useId();
   const label = expanded ? `Collapse ${title}` : `Expand ${title}`;
 
   const onHeaderClick = (event: MouseEvent<HTMLDivElement>) => {
-    if (isHeaderIgnored(event.target)) return;
+    if (event.target instanceof Element && event.target.closest("button")) return;
     onToggle();
   };
 
   return (
-    <div className={className}>
+    <section>
       <div
-        className={cn("flex min-w-0 cursor-pointer items-center gap-2", headerClassName)}
+        className="flex min-w-0 cursor-pointer items-center justify-between gap-2"
         onClick={onHeaderClick}
       >
-        <div className="min-w-0 flex-1">{headerStart}</div>
-        {headerEnd ? <div data-collapse-ignore className="shrink-0">{headerEnd}</div> : null}
+        <h2 className="text-base font-semibold">{title}</h2>
         <Button
           type="button"
           variant="ghost"
@@ -78,8 +58,10 @@ export function CollapsiblePanel({
           expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
         )}
       >
-        <div className="min-h-0 overflow-hidden">{children}</div>
+        <div className="min-h-0 overflow-hidden">
+          <div className="pt-3">{children}</div>
+        </div>
       </div>
-    </div>
+    </section>
   );
 }

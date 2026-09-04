@@ -1,7 +1,6 @@
 "use client";
 
 import { Check, Plus, Trash2, X } from "lucide-react";
-import { CollapsiblePanel } from "@/components/dashboard/collapsible-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -63,18 +62,12 @@ function ChecklistRow({
 export function PrerequisiteCard({
   card,
   editing,
-  expanded,
-  onToggle,
   onChange,
 }: {
   card: PrerequisiteCardData;
   editing: boolean;
-  expanded: boolean;
-  onToggle: () => void;
   onChange: (updater: (current: PrerequisiteCardData) => PrerequisiteCardData) => void;
 }) {
-  const title = card.title.trim() || "Prerequisite (client)";
-
   const patchItem = (id: string, patch: Partial<ChecklistItem>) => {
     onChange((current) => ({
       ...current,
@@ -85,79 +78,65 @@ export function PrerequisiteCard({
   };
 
   return (
-    <Card
-      className={cn(
-        "bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
-        expanded && "h-full min-h-[18rem]"
-      )}
-    >
-      <CollapsiblePanel
-        title={title}
-        expanded={expanded}
-        onToggle={onToggle}
-        headerClassName={cn("px-(--card-spacing)", expanded && "border-b pb-(--card-spacing)")}
-        headerStart={
-          <CardHeader className="px-0">
-            {editing ? (
-              <Input
-                value={card.title}
-                onValueChange={(nextTitle) =>
-                  onChange((current) => ({ ...current, title: nextTitle }))
+    <Card className="h-full min-h-[18rem] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <CardHeader className="border-b">
+        {editing ? (
+          <Input
+            value={card.title}
+            onValueChange={(title) => onChange((current) => ({ ...current, title }))}
+            aria-label="Card title"
+            className="h-8 font-medium"
+          />
+        ) : (
+          <h2 className="text-base font-semibold">
+            {card.title || "Prerequisite (client)"}
+          </h2>
+        )}
+      </CardHeader>
+      <CardContent>
+        {card.checklistItems.length === 0 && !editing ? (
+          <p className="text-sm text-muted-foreground">No prerequisites added yet.</p>
+        ) : (
+          <ul className="space-y-2.5">
+            {card.checklistItems.map((item) => (
+              <ChecklistRow
+                key={item.id}
+                item={item}
+                editing={editing}
+                onPatch={(patch) => patchItem(item.id, patch)}
+                onRemove={() =>
+                  onChange((current) => ({
+                    ...current,
+                    checklistItems: current.checklistItems.filter(
+                      (entry) => entry.id !== item.id
+                    ),
+                  }))
                 }
-                aria-label="Card title"
-                className="h-8 font-medium"
               />
-            ) : (
-              <h2 className="text-base font-semibold">{title}</h2>
-            )}
-          </CardHeader>
-        }
-      >
-        <CardContent className="pt-(--card-spacing)">
-          {card.checklistItems.length === 0 && !editing ? (
-            <p className="text-sm text-muted-foreground">No prerequisites added yet.</p>
-          ) : (
-            <ul className="space-y-2.5">
-              {card.checklistItems.map((item) => (
-                <ChecklistRow
-                  key={item.id}
-                  item={item}
-                  editing={editing}
-                  onPatch={(patch) => patchItem(item.id, patch)}
-                  onRemove={() =>
-                    onChange((current) => ({
-                      ...current,
-                      checklistItems: current.checklistItems.filter(
-                        (entry) => entry.id !== item.id
-                      ),
-                    }))
-                  }
-                />
-              ))}
-            </ul>
-          )}
-          {editing && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="mt-4"
-              onClick={() =>
-                onChange((current) => ({
-                  ...current,
-                  checklistItems: [
-                    ...current.checklistItems,
-                    { id: createId(), text: "", completed: false, order: current.checklistItems.length },
-                  ],
-                }))
-              }
-            >
-              <Plus data-icon="inline-start" />
-              Add item
-            </Button>
-          )}
-        </CardContent>
-      </CollapsiblePanel>
+            ))}
+          </ul>
+        )}
+        {editing && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-4"
+            onClick={() =>
+              onChange((current) => ({
+                ...current,
+                checklistItems: [
+                  ...current.checklistItems,
+                  { id: createId(), text: "", completed: false, order: current.checklistItems.length },
+                ],
+              }))
+            }
+          >
+            <Plus data-icon="inline-start" />
+            Add item
+          </Button>
+        )}
+      </CardContent>
     </Card>
   );
 }

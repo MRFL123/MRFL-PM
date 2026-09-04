@@ -5,14 +5,17 @@ import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { LegacyImportBanner } from "@/components/migrate/legacy-import-banner";
+import { CollapsibleSection } from "@/components/projects/collapsible-section";
 import { ProjectFilters } from "@/components/projects/project-filters";
 import { ProjectForm } from "@/components/projects/project-form";
 import { ProjectList } from "@/components/projects/project-list";
+import { ProjectViewSwitcher, type ProjectListView } from "@/components/projects/project-view-switcher";
 import { SummaryCards } from "@/components/projects/summary-cards";
 import { Button } from "@/components/ui/button";
 import { matchesDateFilter } from "@/lib/dates";
 import { uniqueFieldValues } from "@/lib/projects";
 import { SAVE_ERROR_MESSAGE, useProjects } from "@/lib/store";
+import { useUiPreference } from "@/lib/ui-preferences";
 import type {
   DateFilter,
   Project,
@@ -33,6 +36,18 @@ export function ProjectsPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState<Project | null>(null);
+  const [overviewOpen, setOverviewOpen] = useUiPreference<"open" | "closed">(
+    "mrfl-pm.projects-overview",
+    "open"
+  );
+  const [filtersOpen, setFiltersOpen] = useUiPreference<"open" | "closed">(
+    "mrfl-pm.projects-filters",
+    "open"
+  );
+  const [listView, setListView] = useUiPreference<ProjectListView>(
+    "mrfl-pm.projects-list-view",
+    "list"
+  );
 
   const owners = useMemo(() => uniqueFieldValues(projects, "owner"), [projects]);
   const clients = useMemo(() => uniqueFieldValues(projects, "client"), [projects]);
@@ -64,6 +79,15 @@ export function ProjectsPage() {
       );
     });
   }, [projects, query, statusFilter, clientFilter, ownerFilter, typeFilter, dateFilter]);
+
+  const clearFilters = () => {
+    setQuery("");
+    setStatusFilter("All");
+    setClientFilter("All");
+    setOwnerFilter("All");
+    setTypeFilter("All");
+    setDateFilter("All");
+  };
 
   const handleCreate = async (input: ProjectInput) => {
     try {
@@ -136,36 +160,55 @@ export function ProjectsPage() {
       </div>
 
       <div className="mt-6">
-        <SummaryCards projects={projects} />
+        <CollapsibleSection
+          title="Project Overview"
+          expanded={overviewOpen === "open"}
+          onToggle={() => setOverviewOpen(overviewOpen === "open" ? "closed" : "open")}
+        >
+          <SummaryCards projects={projects} />
+        </CollapsibleSection>
       </div>
 
       <div className="mt-6">
-        <ProjectFilters
-          query={query}
-          onQueryChange={setQuery}
-          statusFilter={statusFilter}
-          onStatusChange={setStatusFilter}
-          clientFilter={clientFilter}
-          onClientChange={setClientFilter}
-          ownerFilter={ownerFilter}
-          onOwnerChange={setOwnerFilter}
-          typeFilter={typeFilter}
-          onTypeChange={setTypeFilter}
-          dateFilter={dateFilter}
-          onDateChange={setDateFilter}
-          clients={clients}
-          owners={owners}
-        />
+        <CollapsibleSection
+          title="Filters"
+          expanded={filtersOpen === "open"}
+          onToggle={() => setFiltersOpen(filtersOpen === "open" ? "closed" : "open")}
+        >
+          <ProjectFilters
+            query={query}
+            onQueryChange={setQuery}
+            statusFilter={statusFilter}
+            onStatusChange={setStatusFilter}
+            clientFilter={clientFilter}
+            onClientChange={setClientFilter}
+            ownerFilter={ownerFilter}
+            onOwnerChange={setOwnerFilter}
+            typeFilter={typeFilter}
+            onTypeChange={setTypeFilter}
+            dateFilter={dateFilter}
+            onDateChange={setDateFilter}
+            clients={clients}
+            owners={owners}
+          />
+        </CollapsibleSection>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-base font-semibold">Projects</h2>
+        <ProjectViewSwitcher value={listView} onChange={setListView} />
+      </div>
+
+      <div className="mt-3">
         <ProjectList
           projects={projects}
           filtered={filtered}
+          view={listView}
           onCreate={() => {
             setEditing(null);
             setFormOpen(true);
           }}
+          onClearFilters={clearFilters}
           onEdit={(project) => {
             setEditing(project);
             setFormOpen(true);
