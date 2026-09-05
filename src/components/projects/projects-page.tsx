@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
+import { PageHeader } from "@/components/app/page-header";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { LegacyImportBanner } from "@/components/migrate/legacy-import-banner";
 import { CollapsibleSection } from "@/components/projects/collapsible-section";
@@ -10,7 +11,6 @@ import { ProjectFilters } from "@/components/projects/project-filters";
 import { ProjectForm } from "@/components/projects/project-form";
 import { ProjectList } from "@/components/projects/project-list";
 import { ProjectViewSwitcher, type ProjectListView } from "@/components/projects/project-view-switcher";
-import { SummaryCards } from "@/components/projects/summary-cards";
 import { Button } from "@/components/ui/button";
 import { matchesDateFilter } from "@/lib/dates";
 import { uniqueFieldValues } from "@/lib/projects";
@@ -36,10 +36,6 @@ export function ProjectsPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState<Project | null>(null);
-  const [overviewOpen, setOverviewOpen] = useUiPreference<"open" | "closed">(
-    "mrfl-pm.projects-overview",
-    "open"
-  );
   const [filtersOpen, setFiltersOpen] = useUiPreference<"open" | "closed">(
     "mrfl-pm.projects-filters",
     "open"
@@ -89,6 +85,11 @@ export function ProjectsPage() {
     setDateFilter("All");
   };
 
+  const openCreate = () => {
+    setEditing(null);
+    setFormOpen(true);
+  };
+
   const handleCreate = async (input: ProjectInput) => {
     try {
       await addProject(input);
@@ -110,119 +111,93 @@ export function ProjectsPage() {
     }
   };
 
-  if (!ready) {
-    return (
-      <div className="mx-auto w-full max-w-[88rem] px-4 py-8 sm:px-6">
-        <p className="text-sm text-muted-foreground">Loading projects...</p>
-        <div className="mt-6 h-8 w-40 animate-pulse rounded-md bg-muted" />
-        <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-5">
-          {Array.from({ length: 5 }).map((_, index) => (
-            <div key={index} className="h-20 animate-pulse rounded-xl bg-muted" />
-          ))}
-        </div>
-        <div className="mt-6 h-64 animate-pulse rounded-xl bg-muted" />
-      </div>
-    );
-  }
-
-  if (loadError) {
-    return (
-      <div className="mx-auto w-full max-w-[88rem] px-4 py-24 text-center sm:px-6">
-        <h1 className="text-2xl font-semibold">Unable to load projects</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{loadError}</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="mx-auto w-full max-w-[88rem] px-4 py-8 sm:px-6">
-      <LegacyImportBanner />
+    <div>
+      <PageHeader
+        title="Projects"
+        subtitle="Track status, owners, types, and weekly progress across every project."
+        actions={
+          <Button onClick={openCreate}>
+            <Plus data-icon="inline-start" />
+            Create Project
+          </Button>
+        }
+      />
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-xs font-medium tracking-[0.16em] text-muted-foreground uppercase">
-            Workspace
-          </p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Projects</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Track status, owners, types, and weekly progress across every project.
-          </p>
-        </div>
-        <Button
-          onClick={() => {
-            setEditing(null);
-            setFormOpen(true);
-          }}
-        >
-          <Plus data-icon="inline-start" />
-          Create Project
-        </Button>
-      </div>
+      <div className="mx-auto w-full max-w-[88rem] px-4 py-8 sm:px-6 lg:px-8">
+        {loadError ? (
+          <div className="rounded-xl border border-border bg-white px-6 py-16 text-center">
+            <h2 className="text-lg font-semibold">Unable to load projects</h2>
+            <p className="mt-2 text-sm text-muted-foreground">{loadError}</p>
+          </div>
+        ) : !ready ? (
+          <div>
+            <p className="text-sm text-muted-foreground">Loading projects...</p>
+            <div className="mt-6 h-10 animate-pulse rounded-xl bg-muted" />
+            <div className="mt-6 h-64 animate-pulse rounded-xl bg-muted" />
+          </div>
+        ) : (
+          <>
+            <LegacyImportBanner />
 
-      <div className="mt-6">
-        <CollapsibleSection
-          title="Project Overview"
-          expanded={overviewOpen === "open"}
-          onToggle={() => setOverviewOpen(overviewOpen === "open" ? "closed" : "open")}
-        >
-          <SummaryCards projects={projects} />
-        </CollapsibleSection>
-      </div>
+            <div>
+              <CollapsibleSection
+                title="Filters"
+                expanded={filtersOpen === "open"}
+                onToggle={() => setFiltersOpen(filtersOpen === "open" ? "closed" : "open")}
+              >
+                <ProjectFilters
+                  query={query}
+                  onQueryChange={setQuery}
+                  statusFilter={statusFilter}
+                  onStatusChange={setStatusFilter}
+                  clientFilter={clientFilter}
+                  onClientChange={setClientFilter}
+                  ownerFilter={ownerFilter}
+                  onOwnerChange={setOwnerFilter}
+                  typeFilter={typeFilter}
+                  onTypeChange={setTypeFilter}
+                  dateFilter={dateFilter}
+                  onDateChange={setDateFilter}
+                  clients={clients}
+                  owners={owners}
+                />
+              </CollapsibleSection>
+            </div>
 
-      <div className="mt-6">
-        <CollapsibleSection
-          title="Filters"
-          expanded={filtersOpen === "open"}
-          onToggle={() => setFiltersOpen(filtersOpen === "open" ? "closed" : "open")}
-        >
-          <ProjectFilters
-            query={query}
-            onQueryChange={setQuery}
-            statusFilter={statusFilter}
-            onStatusChange={setStatusFilter}
-            clientFilter={clientFilter}
-            onClientChange={setClientFilter}
-            ownerFilter={ownerFilter}
-            onOwnerChange={setOwnerFilter}
-            typeFilter={typeFilter}
-            onTypeChange={setTypeFilter}
-            dateFilter={dateFilter}
-            onDateChange={setDateFilter}
-            clients={clients}
-            owners={owners}
-          />
-        </CollapsibleSection>
-      </div>
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                {filtered.length === projects.length
+                  ? `${projects.length} ${projects.length === 1 ? "project" : "projects"}`
+                  : `${filtered.length} of ${projects.length} projects`}
+              </p>
+              <ProjectViewSwitcher value={listView} onChange={setListView} />
+            </div>
 
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-base font-semibold">Projects</h2>
-        <ProjectViewSwitcher value={listView} onChange={setListView} />
-      </div>
-
-      <div className="mt-3">
-        <ProjectList
-          projects={projects}
-          filtered={filtered}
-          view={listView}
-          onCreate={() => {
-            setEditing(null);
-            setFormOpen(true);
-          }}
-          onClearFilters={clearFilters}
-          onEdit={(project) => {
-            setEditing(project);
-            setFormOpen(true);
-          }}
-          onDelete={setDeleting}
-          onStatusChange={async (project, status) => {
-            try {
-              await updateProjectStatus(project.id, status);
-              toast.success("Project saved successfully.");
-            } catch (error) {
-              toast.error(error instanceof Error ? error.message : SAVE_ERROR_MESSAGE);
-            }
-          }}
-        />
+            <div className="mt-3">
+              <ProjectList
+                projects={projects}
+                filtered={filtered}
+                view={listView}
+                onCreate={openCreate}
+                onClearFilters={clearFilters}
+                onEdit={(project) => {
+                  setEditing(project);
+                  setFormOpen(true);
+                }}
+                onDelete={setDeleting}
+                onStatusChange={async (project, status) => {
+                  try {
+                    await updateProjectStatus(project.id, status);
+                    toast.success("Project saved successfully.");
+                  } catch (error) {
+                    toast.error(error instanceof Error ? error.message : SAVE_ERROR_MESSAGE);
+                  }
+                }}
+              />
+            </div>
+          </>
+        )}
       </div>
 
       <ProjectForm

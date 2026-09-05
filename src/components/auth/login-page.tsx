@@ -18,7 +18,7 @@ export function LoginPage() {
 
   useEffect(() => {
     if (ready && signedIn) {
-      router.replace("/projects");
+      router.replace("/dashboard");
     }
   }, [ready, signedIn, router]);
 
@@ -29,7 +29,7 @@ export function LoginPage() {
     try {
       const ok = await signIn(email, password);
       if (ok) {
-        router.replace("/projects");
+        router.replace("/dashboard");
         return;
       }
       setError("Invalid email or password.");
