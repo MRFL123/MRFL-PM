@@ -96,13 +96,13 @@ function SidebarLink({
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
         active
-          ? "bg-zinc-200/70 text-zinc-900"
-          : "text-muted-foreground hover:bg-zinc-200/50 hover:text-zinc-800",
+          ? "bg-zinc-200 font-semibold text-zinc-900"
+          : "font-medium text-muted-foreground hover:bg-zinc-100 hover:text-zinc-800",
       )}
     >
-      <Icon className={cn("size-[18px] shrink-0", active ? "text-zinc-700" : "text-zinc-400")} />
+      <Icon className={cn("size-[18px] shrink-0", active ? "text-zinc-900" : "text-zinc-400")} />
       <span className="truncate">{item.label}</span>
     </Link>
   );
