@@ -32,9 +32,12 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const path = request.nextUrl.pathname;
-  const isProjects = path === "/projects" || path.startsWith("/projects/");
+  const PROTECTED_PREFIXES = ["/dashboard", "/projects", "/invoices", "/users", "/settings"];
+  const isProtected = PROTECTED_PREFIXES.some(
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+  );
 
-  if (isProjects && !user) {
+  if (isProtected && !user) {
     const redirect = request.nextUrl.clone();
     redirect.pathname = "/";
     return NextResponse.redirect(redirect);
@@ -42,7 +45,7 @@ export async function updateSession(request: NextRequest) {
 
   if (path === "/" && user) {
     const redirect = request.nextUrl.clone();
-    redirect.pathname = "/projects";
+    redirect.pathname = "/dashboard";
     return NextResponse.redirect(redirect);
   }
 
