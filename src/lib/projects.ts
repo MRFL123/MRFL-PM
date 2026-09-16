@@ -177,6 +177,13 @@ export function nextMilestoneLabel(project: Project): string {
   return next?.name ?? "Completed";
 }
 
+export function currentInProgressMilestone(project: Project): string | null {
+  const current = sortMilestones(project.milestones).find(
+    (milestone) => milestone.status === "In Progress"
+  );
+  return current?.name ?? null;
+}
+
 export function uniqueFieldValues(
   projects: Project[],
   field: "owner" | "client"
