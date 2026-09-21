@@ -110,6 +110,7 @@ function InvoiceFormFields({
       await onSubmit({
         invoiceDate: date,
         client: client.trim(),
+        clientLogoUrl: project?.logo ?? null,
         projectId: project?.id ?? null,
         projectName: project?.name ?? "",
         milestoneId: milestone?.id ?? null,

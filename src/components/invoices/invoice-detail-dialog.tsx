@@ -62,12 +62,16 @@ type EditDraft = {
   companyWebsite: string;
 };
 
-function toDraft(invoice: Invoice): EditDraft {
+function toDraft(invoice: Invoice, projectLogoUrl?: string | null): EditDraft {
+  // Prefer the invoice snapshot. Only pre-fill from project logo when invoice has none.
+  const clientLogoUrl =
+    invoice.clientLogoUrl ||
+    (projectLogoUrl && projectLogoUrl.trim() ? projectLogoUrl : null);
   return {
     number: invoice.number,
     invoiceDate: toDateInputValue(invoice.invoiceDate),
     client: invoice.client,
-    clientLogoUrl: invoice.clientLogoUrl,
+    clientLogoUrl,
     projectName: invoice.projectName,
     milestoneName: invoice.milestoneName,
     description: invoice.description,
@@ -103,11 +107,14 @@ function draftAsInvoice(invoice: Invoice, draft: EditDraft): Invoice {
 
 function InvoiceDetailBody({
   invoice,
+  projectLogoUrl = null,
   onOpenChange,
   onUpdate,
   onSaved,
 }: {
   invoice: Invoice;
+  /** Used only to pre-fill edit form when invoice.clientLogoUrl is empty. */
+  projectLogoUrl?: string | null;
   onOpenChange: (open: boolean) => void;
   onUpdate?: (
     id: string,
@@ -117,7 +124,7 @@ function InvoiceDetailBody({
 }) {
   const [busy, setBusy] = useState<BusyAction>(null);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<EditDraft>(() => toDraft(invoice));
+  const [draft, setDraft] = useState<EditDraft>(() => toDraft(invoice, projectLogoUrl));
   const [error, setError] = useState<string | null>(null);
   const [current, setCurrent] = useState(invoice);
 
@@ -143,7 +150,7 @@ function InvoiceDetailBody({
   };
 
   const handleCancelEdit = () => {
-    setDraft(toDraft(current));
+    setDraft(toDraft(current, projectLogoUrl));
     setEditing(false);
     setError(null);
   };
@@ -188,7 +195,7 @@ function InvoiceDetailBody({
         companyWebsite: draft.companyWebsite.trim() || COMPANY_WEBSITE,
       });
       setCurrent(updated);
-      setDraft(toDraft(updated));
+      setDraft(toDraft(updated, projectLogoUrl));
       setEditing(false);
       onSaved?.(updated);
       toast.success("Invoice saved.");
@@ -257,6 +264,7 @@ function InvoiceDetailBody({
             onChange={(logo) => setDraft((prev) => ({ ...prev, clientLogoUrl: logo }))}
             label="Client Logo"
             uploadLabel="+ Upload Client Logo"
+            preserveAssetUrls={[projectLogoUrl]}
           />
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -514,7 +522,7 @@ function InvoiceDetailBody({
               type="button"
               disabled={!onUpdate || busy !== null}
               onClick={() => {
-                setDraft(toDraft(current));
+                setDraft(toDraft(current, projectLogoUrl));
                 setEditing(true);
                 setError(null);
               }}
@@ -539,12 +547,15 @@ function InvoiceDetailBody({
 
 export function InvoiceDetailDialog({
   invoice,
+  projectLogoUrl = null,
   open,
   onOpenChange,
   onUpdate,
   onSaved,
 }: {
   invoice: Invoice | null;
+  /** Project logo used as edit-form default when invoice has no client logo. */
+  projectLogoUrl?: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onUpdate?: (
@@ -560,6 +571,7 @@ export function InvoiceDetailDialog({
           <InvoiceDetailBody
             key={`${invoice.id}:${invoice.updatedAt}:${open ? "open" : "closed"}`}
             invoice={invoice}
+            projectLogoUrl={projectLogoUrl}
             onOpenChange={onOpenChange}
             onUpdate={onUpdate}
             onSaved={onSaved}

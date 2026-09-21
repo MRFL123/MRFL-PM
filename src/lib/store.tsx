@@ -105,6 +105,7 @@ async function maybeCreateAutomaticInvoice(
     projectId: project.id,
     projectName: project.name,
     projectClient: project.client,
+    projectLogoUrl: project.logo,
     milestoneId: milestone.id,
     milestoneName: milestone.name,
     price: milestone.price,

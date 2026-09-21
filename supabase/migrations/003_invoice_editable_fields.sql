@@ -1,8 +1,8 @@
 -- Invoice editable snapshot fields (independent of projects/milestones)
+-- Additive only. Safe to re-run. Paste into Supabase SQL editor if columns are missing.
 
-alter table public.invoices
-  add column if not exists project_name text not null default '',
-  add column if not exists milestone_name text not null default '',
-  add column if not exists client_logo_url text,
-  add column if not exists company_tax_id text not null default '233421',
-  add column if not exists company_website text not null default 'www.themirrorful.com';
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS project_name text NOT NULL DEFAULT '';
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS milestone_name text NOT NULL DEFAULT '';
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS client_logo_url text;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS company_tax_id text NOT NULL DEFAULT '233421';
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS company_website text NOT NULL DEFAULT 'www.themirrorful.com';

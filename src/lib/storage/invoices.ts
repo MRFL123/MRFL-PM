@@ -166,6 +166,8 @@ export const supabaseInvoiceRepository = {
     projectId: string;
     projectName: string;
     projectClient: string;
+    /** Project logo URL used as default invoice client_logo_url (snapshot only). */
+    projectLogoUrl?: string | null;
     milestoneId: string;
     milestoneName: string;
     price: number;
@@ -174,10 +176,13 @@ export const supabaseInvoiceRepository = {
     const existing = await this.findAutomaticForMilestone(params.milestoneId);
     if (existing) return null;
 
+    const projectLogo = (params.projectLogoUrl ?? "").trim() || null;
+
     return this.create(
       {
         invoiceDate: formatIsoDate(),
         client: params.projectClient,
+        clientLogoUrl: projectLogo,
         projectId: params.projectId,
         projectName: params.projectName,
         milestoneId: params.milestoneId,
