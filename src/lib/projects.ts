@@ -70,6 +70,9 @@ export function createMilestone(
   return {
     id: createId(),
     name: input.name.trim(),
+    description: (input.description ?? "").trim(),
+    price: Number.isFinite(input.price) ? Number(input.price) : 0,
+    currency: (input.currency || "EGP").trim() || "EGP",
     status: input.status,
     startDate: input.startDate,
     endDate: input.endDate,

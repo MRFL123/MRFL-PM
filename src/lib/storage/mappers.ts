@@ -1,4 +1,11 @@
 import { createEmptyDashboard, isProjectType } from "@/lib/projects";
+import {
+  INVOICE_SOURCES,
+  INVOICE_STATUSES,
+  type Invoice,
+  type InvoiceSource,
+  type InvoiceStatus,
+} from "@/lib/invoices";
 import type {
   ChecklistItem,
   DeliveredItem,
@@ -44,6 +51,9 @@ export type MilestoneRow = {
   id: string;
   project_id: string;
   name: string;
+  description: string | null;
+  price: number | string | null;
+  currency: string | null;
   status: string;
   start_date: string | null;
   end_date: string | null;
@@ -65,10 +75,42 @@ export type ProjectQueryRow = ProjectRow & {
   project_delivered_items: DeliveredRow[] | null;
 };
 
+export type InvoiceRow = {
+  id: string;
+  number: string;
+  invoice_date: string;
+  client: string | null;
+  project_id: string | null;
+  milestone_id: string | null;
+  description: string | null;
+  amount: number | string | null;
+  currency: string | null;
+  status: string;
+  payment_number: string | null;
+  source: string;
+  created_at: string;
+  updated_at: string;
+  projects?: { id: string; name: string } | { id: string; name: string }[] | null;
+  project_milestones?: { id: string; name: string } | { id: string; name: string }[] | null;
+};
+
 function asStatus(value: unknown): Status {
   return typeof value === "string" && (STATUSES as readonly string[]).includes(value)
     ? (value as Status)
     : "None";
+}
+
+function asInvoiceStatus(value: unknown): InvoiceStatus {
+  if (value === "Sent") return "Issued";
+  return typeof value === "string" && (INVOICE_STATUSES as readonly string[]).includes(value)
+    ? (value as InvoiceStatus)
+    : "Draft";
+}
+
+function asInvoiceSource(value: unknown): InvoiceSource {
+  return typeof value === "string" && (INVOICE_SOURCES as readonly string[]).includes(value)
+    ? (value as InvoiceSource)
+    : "manual";
 }
 
 function one<T>(value: T | T[] | null | undefined): T | null {
@@ -76,10 +118,22 @@ function one<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? (value[0] ?? null) : value;
 }
 
+function asNumber(value: number | string | null | undefined, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
 export function mapMilestone(row: MilestoneRow): Milestone {
   return {
     id: row.id,
     name: row.name,
+    description: row.description ?? "",
+    price: asNumber(row.price),
+    currency: row.currency || "EGP",
     status: asStatus(row.status),
     startDate: row.start_date,
     endDate: row.end_date,
@@ -150,10 +204,39 @@ export function mapProject(row: ProjectQueryRow): Project {
   };
 }
 
+export function mapInvoice(row: InvoiceRow): Invoice {
+  const project = one(row.projects);
+  const milestone = one(row.project_milestones);
+  return {
+    id: row.id,
+    number: row.number,
+    invoiceDate: row.invoice_date,
+    client: row.client ?? "",
+    projectId: row.project_id,
+    projectName: project?.name ?? "",
+    milestoneId: row.milestone_id,
+    milestoneName: milestone?.name ?? "",
+    description: row.description ?? "",
+    amount: asNumber(row.amount),
+    currency: row.currency || "EGP",
+    status: asInvoiceStatus(row.status),
+    paymentNumber: row.payment_number ?? "",
+    source: asInvoiceSource(row.source),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 export const PROJECT_SELECT = `
   *,
   project_dashboard (*),
   project_prerequisites (*),
   project_milestones (*),
   project_delivered_items (*)
+`;
+
+export const INVOICE_SELECT = `
+  *,
+  projects ( id, name ),
+  project_milestones ( id, name )
 `;
