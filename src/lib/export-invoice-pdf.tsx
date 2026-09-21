@@ -1,4 +1,4 @@
-import { triggerDownload } from "@/lib/pdf";
+import { loadBrandLogo, triggerDownload } from "@/lib/pdf";
 import type { Invoice } from "@/lib/invoices";
 
 export function invoiceFilename(invoice: Invoice): string {
@@ -7,11 +7,12 @@ export function invoiceFilename(invoice: Invoice): string {
 }
 
 export async function exportInvoicePdf(invoice: Invoice): Promise<Blob> {
-  const [{ pdf }, { InvoicePDF }] = await Promise.all([
+  const [{ pdf }, { InvoicePDF }, brandLogo] = await Promise.all([
     import("@react-pdf/renderer"),
     import("@/components/pdf/invoice-pdf"),
+    loadBrandLogo(),
   ]);
-  return pdf(<InvoicePDF invoice={invoice} />).toBlob();
+  return pdf(<InvoicePDF invoice={invoice} brandLogo={brandLogo} />).toBlob();
 }
 
 export async function downloadInvoicePdf(invoice: Invoice): Promise<void> {

@@ -15,11 +15,27 @@ const styles = StyleSheet.create({
     paddingBottom: 48,
     paddingHorizontal: 40,
   },
-  brand: {
-    fontSize: 14,
-    fontFamily: "Helvetica-Bold",
-    color: colors.brand,
-    marginBottom: 4,
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 8,
+    gap: 24,
+  },
+  brandCol: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+    maxWidth: "55%",
+  },
+  clientLogoCol: {
+    alignItems: "flex-end",
+    maxWidth: "40%",
+  },
+  brandLogo: {
+    width: 48,
+    height: 48,
+    objectFit: "contain",
+    marginBottom: 6,
   },
   muted: {
     fontSize: 9,
@@ -53,10 +69,9 @@ const styles = StyleSheet.create({
     fontFamily: "Helvetica-Bold",
   },
   clientLogo: {
-    width: 72,
-    height: 40,
+    width: 88,
+    height: 48,
     objectFit: "contain",
-    marginBottom: 6,
   },
   box: {
     borderWidth: 1,
@@ -108,27 +123,45 @@ const styles = StyleSheet.create({
   },
 });
 
-export function InvoicePDF({ invoice }: { invoice: Invoice }) {
+export function InvoicePDF({
+  invoice,
+  brandLogo,
+}: {
+  invoice: Invoice;
+  brandLogo?: string | null;
+}) {
   const taxId = invoice.companyTaxId || "233421";
   const website = invoice.companyWebsite || "www.themirrorful.com";
   const clientLogo =
     invoice.clientLogoUrl && isPdfSafeImage(invoice.clientLogoUrl)
       ? invoice.clientLogoUrl
       : null;
+  const companyLogo =
+    brandLogo && isPdfSafeImage(brandLogo) ? brandLogo : null;
 
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        <Text style={styles.brand}>شركة ميرورفل للرقمنة</Text>
-        <Text style={styles.muted}>Tax ID: {taxId}</Text>
-        <Text style={styles.muted}>{website}</Text>
+        <View style={styles.headerRow}>
+          <View style={styles.brandCol}>
+            {companyLogo ? (
+              <Image src={companyLogo} style={styles.brandLogo} />
+            ) : null}
+            <Text style={styles.muted}>Tax ID: {taxId}</Text>
+            <Text style={styles.muted}>{website}</Text>
+          </View>
+          {clientLogo ? (
+            <View style={styles.clientLogoCol}>
+              <Image src={clientLogo} style={styles.clientLogo} />
+            </View>
+          ) : null}
+        </View>
 
         <Text style={styles.title}>Invoice {invoice.number}</Text>
 
         <View style={styles.row}>
           <View style={styles.col}>
             <Text style={styles.label}>Bill To</Text>
-            {clientLogo ? <Image src={clientLogo} style={styles.clientLogo} /> : null}
             <Text style={styles.value}>{invoice.client || "—"}</Text>
             {invoice.projectName ? (
               <Text style={styles.muted}>Project: {invoice.projectName}</Text>
@@ -167,7 +200,7 @@ export function InvoicePDF({ invoice }: { invoice: Invoice }) {
         </View>
 
         <View style={styles.footer} fixed>
-          <Text style={styles.muted}>شركة ميرورفل للرقمنة · Tax {taxId}</Text>
+          <Text style={styles.muted}>Mirrorful · Tax {taxId}</Text>
           <Text style={styles.muted}>{website}</Text>
         </View>
       </Page>
