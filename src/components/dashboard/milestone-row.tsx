@@ -8,20 +8,25 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { formatDisplayDate, fromDateInputValue, isEndBeforeStart } from "@/lib/dates";
+import { formatCurrency, type Invoice } from "@/lib/invoices";
 import type { Milestone, Status } from "@/lib/types";
 
 export function MilestoneRow({
   milestone,
+  invoice,
   onStatusChange,
   onDatesChange,
   onEdit,
   onDelete,
+  onViewInvoice,
 }: {
   milestone: Milestone;
+  invoice?: Invoice | null;
   onStatusChange: (status: Status) => void;
   onDatesChange: (startDate: string | null, endDate: string | null) => void;
   onEdit: () => void;
   onDelete: () => void;
+  onViewInvoice?: (invoice: Invoice) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: milestone.id });
@@ -41,7 +46,7 @@ export function MilestoneRow({
       }}
       className={isDragging ? "bg-muted/70 opacity-80" : undefined}
     >
-      <TableCell className="min-w-[16rem]">
+      <TableCell className="min-w-[14rem]">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -52,11 +57,34 @@ export function MilestoneRow({
           >
             <GripVertical className="size-4" />
           </button>
-          <span className="font-medium whitespace-normal">{milestone.name}</span>
+          <div className="min-w-0">
+            <span className="font-medium whitespace-normal">{milestone.name}</span>
+            {milestone.description ? (
+              <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
+                {milestone.description}
+              </p>
+            ) : null}
+          </div>
         </div>
       </TableCell>
       <TableCell>
         <StatusSelect compact value={milestone.status} onChange={onStatusChange} />
+      </TableCell>
+      <TableCell className="whitespace-nowrap text-sm font-medium">
+        {formatCurrency(milestone.price, milestone.currency || "EGP")}
+      </TableCell>
+      <TableCell className="min-w-[8rem]">
+        {invoice ? (
+          <button
+            type="button"
+            className="text-sm font-medium text-sky-700 hover:underline"
+            onClick={() => onViewInvoice?.(invoice)}
+          >
+            {invoice.number}
+          </button>
+        ) : (
+          <span className="text-sm text-muted-foreground">No Invoice</span>
+        )}
       </TableCell>
       <TableCell>
         <Input

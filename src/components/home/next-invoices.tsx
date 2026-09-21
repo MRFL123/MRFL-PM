@@ -1,23 +1,19 @@
+"use client";
+
 import Link from "next/link";
 import { ChevronRight, ReceiptText } from "lucide-react";
 import { StatusPill } from "@/components/app/status-pill";
 import {
   INVOICE_STATUS_STYLES,
-  SAMPLE_INVOICES,
   formatCurrency,
-  type Invoice,
+  upcomingInvoices,
 } from "@/lib/invoices";
 import { formatDisplayDate } from "@/lib/dates";
-
-function upcomingInvoices(invoices: Invoice[], limit = 4): Invoice[] {
-  return [...invoices]
-    .filter((invoice) => invoice.status !== "Paid")
-    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-    .slice(0, limit);
-}
+import { useProjects } from "@/lib/store";
 
 export function NextInvoices() {
-  const rows = upcomingInvoices(SAMPLE_INVOICES);
+  const { invoices } = useProjects();
+  const rows = upcomingInvoices(invoices);
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-white">
@@ -28,7 +24,7 @@ export function NextInvoices() {
           </div>
           <p className="text-sm font-medium text-foreground">No upcoming invoices</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Invoices awaiting payment will appear here.
+            Unpaid invoices will appear here.
           </p>
         </div>
       ) : (
@@ -41,16 +37,20 @@ export function NextInvoices() {
               >
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-foreground">
-                    {invoice.number} · {invoice.client}
+                    {invoice.number} · {invoice.client || "No client"}
                   </p>
                   <p className="truncate text-xs text-muted-foreground">
-                    {invoice.project} · Due {formatDisplayDate(invoice.dueDate)}
+                    {invoice.projectName || "No project"} ·{" "}
+                    {formatDisplayDate(invoice.invoiceDate)}
                   </p>
                 </div>
                 <span className="text-sm font-semibold text-foreground">
-                  {formatCurrency(invoice.amount)}
+                  {formatCurrency(invoice.amount, invoice.currency)}
                 </span>
-                <StatusPill label={invoice.status} className={INVOICE_STATUS_STYLES[invoice.status]} />
+                <StatusPill
+                  label={invoice.status}
+                  className={INVOICE_STATUS_STYLES[invoice.status]}
+                />
                 <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
               </Link>
             </li>

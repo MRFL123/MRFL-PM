@@ -19,3 +19,28 @@ export function triggerDownload(blob: Blob, filename: string) {
   link.remove();
   URL.revokeObjectURL(url);
 }
+
+let brandLogoCache: string | null | undefined;
+
+/** Resolve Mirrorful mark as a data URL for @react-pdf/renderer Image. */
+export async function loadBrandLogo(): Promise<string | null> {
+  if (brandLogoCache !== undefined) return brandLogoCache;
+  try {
+    const response = await fetch("/mirrorful-mark.png");
+    if (!response.ok) {
+      brandLogoCache = null;
+      return null;
+    }
+    const blob = await response.blob();
+    brandLogoCache = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+    return brandLogoCache;
+  } catch {
+    brandLogoCache = null;
+    return null;
+  }
+}
