@@ -103,6 +103,7 @@ async function maybeCreateAutomaticInvoice(
   if (milestone.status !== "Delivered") return null;
   return invoiceRepository.createAutomaticForDeliveredMilestone({
     projectId: project.id,
+    projectName: project.name,
     projectClient: project.client,
     milestoneId: milestone.id,
     milestoneName: milestone.name,
@@ -530,19 +531,9 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
         const existing = invoicesRef.current.find((row) => row.id === id);
         if (!existing) throw new Error("Invoice not found.");
 
-        const locked = existing.source === "automatic" || existing.status === "Issued" || existing.status === "Paid";
-        const safeInput: Partial<InvoiceInput> & { status?: InvoiceStatus } = { ...input };
-        if (locked) {
-          // Restrict silent financial edits on Issued/automatic/Paid.
-          delete safeInput.amount;
-          delete safeInput.currency;
-          if (existing.source === "automatic") {
-            delete safeInput.milestoneId;
-            delete safeInput.projectId;
-          }
-        }
-
-        const updated = await invoiceRepository.update(id, safeInput);
+        // Snapshot fields (including amount) are independently editable on the invoice.
+        // Edits never mutate linked project/milestone rows.
+        const updated = await invoiceRepository.update(id, input);
         setInvoices((current) => current.map((row) => (row.id === id ? updated : row)));
         return updated;
       });

@@ -19,6 +19,17 @@ export async function downloadInvoicePdf(invoice: Invoice): Promise<void> {
   triggerDownload(blob, invoiceFilename(invoice));
 }
 
+export async function previewInvoicePdf(invoice: Invoice): Promise<void> {
+  const blob = await exportInvoicePdf(invoice);
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  if (!win) {
+    URL.revokeObjectURL(url);
+    throw new Error("Popup blocked. Allow popups to preview the invoice.");
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 export async function printInvoicePdf(invoice: Invoice): Promise<void> {
   const blob = await exportInvoicePdf(invoice);
   const url = URL.createObjectURL(blob);

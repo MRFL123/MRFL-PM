@@ -1,5 +1,7 @@
 import { createEmptyDashboard, isProjectType } from "@/lib/projects";
 import {
+  COMPANY_TAX_ID,
+  COMPANY_WEBSITE,
   INVOICE_SOURCES,
   INVOICE_STATUSES,
   type Invoice,
@@ -80,14 +82,19 @@ export type InvoiceRow = {
   number: string;
   invoice_date: string;
   client: string | null;
+  client_logo_url: string | null;
   project_id: string | null;
+  project_name: string | null;
   milestone_id: string | null;
+  milestone_name: string | null;
   description: string | null;
   amount: number | string | null;
   currency: string | null;
   status: string;
   payment_number: string | null;
   source: string;
+  company_tax_id: string | null;
+  company_website: string | null;
   created_at: string;
   updated_at: string;
   projects?: { id: string; name: string } | { id: string; name: string }[] | null;
@@ -207,21 +214,26 @@ export function mapProject(row: ProjectQueryRow): Project {
 export function mapInvoice(row: InvoiceRow): Invoice {
   const project = one(row.projects);
   const milestone = one(row.project_milestones);
+  const storedProjectName = (row.project_name ?? "").trim();
+  const storedMilestoneName = (row.milestone_name ?? "").trim();
   return {
     id: row.id,
     number: row.number,
     invoiceDate: row.invoice_date,
     client: row.client ?? "",
+    clientLogoUrl: row.client_logo_url ?? null,
     projectId: row.project_id,
-    projectName: project?.name ?? "",
+    projectName: storedProjectName || project?.name || "",
     milestoneId: row.milestone_id,
-    milestoneName: milestone?.name ?? "",
+    milestoneName: storedMilestoneName || milestone?.name || "",
     description: row.description ?? "",
     amount: asNumber(row.amount),
     currency: row.currency || "EGP",
     status: asInvoiceStatus(row.status),
     paymentNumber: row.payment_number ?? "",
     source: asInvoiceSource(row.source),
+    companyTaxId: (row.company_tax_id ?? "").trim() || COMPANY_TAX_ID,
+    companyWebsite: (row.company_website ?? "").trim() || COMPANY_WEBSITE,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

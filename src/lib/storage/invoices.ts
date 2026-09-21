@@ -1,7 +1,11 @@
 import { createId } from "@/lib/ids";
 import { formatIsoDate } from "@/lib/dates";
 import type { Invoice, InvoiceInput, InvoiceSource, InvoiceStatus } from "@/lib/invoices";
-import { DEFAULT_CURRENCY } from "@/lib/invoices";
+import {
+  COMPANY_TAX_ID,
+  COMPANY_WEBSITE,
+  DEFAULT_CURRENCY,
+} from "@/lib/invoices";
 import { INVOICE_SELECT, mapInvoice, type InvoiceRow } from "@/lib/storage/mappers";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -35,6 +39,16 @@ async function nextInvoiceNumber(): Promise<string> {
     }
   }
   return formatInvoiceNumber(max + 1);
+}
+
+function snapshotFields(input: InvoiceInput) {
+  return {
+    project_name: (input.projectName ?? "").trim(),
+    milestone_name: (input.milestoneName ?? "").trim(),
+    client_logo_url: input.clientLogoUrl ?? null,
+    company_tax_id: (input.companyTaxId ?? COMPANY_TAX_ID).trim() || COMPANY_TAX_ID,
+    company_website: (input.companyWebsite ?? COMPANY_WEBSITE).trim() || COMPANY_WEBSITE,
+  };
 }
 
 export const supabaseInvoiceRepository = {
@@ -77,9 +91,10 @@ export const supabaseInvoiceRepository = {
     options?: { source?: InvoiceSource; number?: string },
   ): Promise<Invoice> {
     const supabase = createSupabaseBrowserClient();
-    const number = options?.number ?? (await nextInvoiceNumber());
+    const number = options?.number ?? input.number ?? (await nextInvoiceNumber());
     const source = options?.source ?? "manual";
     const id = createId();
+    const snapshots = snapshotFields(input);
 
     const { error } = await supabase.from("invoices").insert({
       id,
@@ -94,6 +109,7 @@ export const supabaseInvoiceRepository = {
       status: input.status,
       payment_number: (input.paymentNumber ?? "").trim(),
       source,
+      ...snapshots,
     });
     if (error) throwSaveError(error);
 
@@ -102,13 +118,20 @@ export const supabaseInvoiceRepository = {
     return created;
   },
 
-  async update(id: string, input: Partial<InvoiceInput> & { status?: InvoiceStatus }): Promise<Invoice> {
+  async update(
+    id: string,
+    input: Partial<InvoiceInput> & { status?: InvoiceStatus; number?: string },
+  ): Promise<Invoice> {
     const supabase = createSupabaseBrowserClient();
     const patch: Record<string, unknown> = {};
+    if (input.number !== undefined) patch.number = input.number.trim();
     if (input.invoiceDate !== undefined) patch.invoice_date = input.invoiceDate;
     if (input.client !== undefined) patch.client = input.client.trim();
+    if (input.clientLogoUrl !== undefined) patch.client_logo_url = input.clientLogoUrl;
     if (input.projectId !== undefined) patch.project_id = input.projectId;
+    if (input.projectName !== undefined) patch.project_name = input.projectName.trim();
     if (input.milestoneId !== undefined) patch.milestone_id = input.milestoneId;
+    if (input.milestoneName !== undefined) patch.milestone_name = input.milestoneName.trim();
     if (input.description !== undefined) patch.description = input.description.trim();
     if (input.amount !== undefined) {
       patch.amount = Number.isFinite(input.amount) ? Number(input.amount) : 0;
@@ -118,6 +141,12 @@ export const supabaseInvoiceRepository = {
     }
     if (input.status !== undefined) patch.status = input.status;
     if (input.paymentNumber !== undefined) patch.payment_number = input.paymentNumber.trim();
+    if (input.companyTaxId !== undefined) {
+      patch.company_tax_id = input.companyTaxId.trim() || COMPANY_TAX_ID;
+    }
+    if (input.companyWebsite !== undefined) {
+      patch.company_website = input.companyWebsite.trim() || COMPANY_WEBSITE;
+    }
 
     const { error } = await supabase.from("invoices").update(patch).eq("id", id);
     if (error) throwSaveError(error);
@@ -135,6 +164,7 @@ export const supabaseInvoiceRepository = {
 
   async createAutomaticForDeliveredMilestone(params: {
     projectId: string;
+    projectName: string;
     projectClient: string;
     milestoneId: string;
     milestoneName: string;
@@ -149,12 +179,16 @@ export const supabaseInvoiceRepository = {
         invoiceDate: formatIsoDate(),
         client: params.projectClient,
         projectId: params.projectId,
+        projectName: params.projectName,
         milestoneId: params.milestoneId,
+        milestoneName: params.milestoneName,
         description: params.milestoneName,
         amount: params.price,
         currency: params.currency || DEFAULT_CURRENCY,
         status: "Issued",
         paymentNumber: "",
+        companyTaxId: COMPANY_TAX_ID,
+        companyWebsite: COMPANY_WEBSITE,
       },
       { source: "automatic" },
     );

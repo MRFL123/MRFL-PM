@@ -37,7 +37,7 @@ import { SAVE_ERROR_MESSAGE, useProjects } from "@/lib/store";
 type SortKey = "number" | "date" | "amount" | "client" | "status";
 
 export function InvoicesPage() {
-  const { ready, loadError, invoices, projects, createInvoice } = useProjects();
+  const { ready, loadError, invoices, projects, createInvoice, updateInvoice } = useProjects();
   const [formOpen, setFormOpen] = useState(false);
   const [viewing, setViewing] = useState<Invoice | null>(null);
   const [query, setQuery] = useState("");
@@ -373,6 +373,8 @@ export function InvoicesPage() {
         onOpenChange={(open) => {
           if (!open) setViewing(null);
         }}
+        onUpdate={updateInvoice}
+        onSaved={(invoice) => setViewing(invoice)}
       />
     </div>
   );

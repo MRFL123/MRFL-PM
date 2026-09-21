@@ -35,7 +35,7 @@ import { SAVE_ERROR_MESSAGE, useProjects } from "@/lib/store";
 import type { Milestone, MilestoneInput, Project } from "@/lib/types";
 
 export function MilestoneTable({ project }: { project: Project }) {
-  const { addMilestone, updateMilestone, deleteMilestone, moveMilestone, getInvoiceForMilestone } =
+  const { addMilestone, updateMilestone, deleteMilestone, moveMilestone, getInvoiceForMilestone, updateInvoice } =
     useProjects();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Milestone | null>(null);
@@ -223,6 +223,8 @@ export function MilestoneTable({ project }: { project: Project }) {
         onOpenChange={(open) => {
           if (!open) setViewingInvoice(null);
         }}
+        onUpdate={updateInvoice}
+        onSaved={(invoice) => setViewingInvoice(invoice)}
       />
     </section>
   );

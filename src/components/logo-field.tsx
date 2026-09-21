@@ -12,10 +12,14 @@ export function LogoField({
   name,
   logo,
   onChange,
+  label = "Project Logo",
+  uploadLabel = "+ Upload Project Logo",
 }: {
   name: string;
   logo: string | null;
   onChange: (logo: string | null) => void;
+  label?: string;
+  uploadLabel?: string;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -32,7 +36,7 @@ export function LogoField({
 
   return (
     <div className="grid gap-1.5">
-      <Label>Project Logo</Label>
+      <Label>{label}</Label>
       <div className="rounded-xl border border-dashed border-border bg-muted/30 p-4">
         {logo ? (
           <div className="flex flex-col items-center gap-3 text-center">
@@ -71,7 +75,7 @@ export function LogoField({
             className="flex w-full flex-col items-center justify-center gap-2 py-4 text-sm text-muted-foreground hover:text-foreground"
           >
             <ImagePlus className="size-5" />
-            + Upload Project Logo
+            {uploadLabel}
           </button>
         )}
       </div>

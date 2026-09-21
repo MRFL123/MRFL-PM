@@ -12,11 +12,16 @@ export const INVOICE_SOURCES = ["automatic", "manual"] as const;
 
 export type InvoiceSource = (typeof INVOICE_SOURCES)[number];
 
+export const DEFAULT_CURRENCY = "EGP";
+export const COMPANY_TAX_ID = "233421";
+export const COMPANY_WEBSITE = "www.themirrorful.com";
+
 export interface Invoice {
   id: string;
   number: string;
   invoiceDate: string;
   client: string;
+  clientLogoUrl: string | null;
   projectId: string | null;
   projectName: string;
   milestoneId: string | null;
@@ -27,20 +32,28 @@ export interface Invoice {
   status: InvoiceStatus;
   paymentNumber: string;
   source: InvoiceSource;
+  companyTaxId: string;
+  companyWebsite: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface InvoiceInput {
+  number?: string;
   invoiceDate: string;
   client: string;
+  clientLogoUrl?: string | null;
   projectId: string | null;
+  projectName?: string;
   milestoneId: string | null;
+  milestoneName?: string;
   description: string;
   amount: number;
   currency: string;
   status: InvoiceStatus;
   paymentNumber: string;
+  companyTaxId?: string;
+  companyWebsite?: string;
 }
 
 export const INVOICE_STATUS_STYLES: Record<InvoiceStatus, string> = {
@@ -50,8 +63,6 @@ export const INVOICE_STATUS_STYLES: Record<InvoiceStatus, string> = {
   Overdue: "bg-red-50 text-red-700 ring-red-200",
   Cancelled: "bg-zinc-100 text-zinc-500 ring-zinc-200",
 };
-
-export const DEFAULT_CURRENCY = "EGP";
 
 export function formatCurrency(amount: number, currency = DEFAULT_CURRENCY): string {
   try {
@@ -65,8 +76,9 @@ export function formatCurrency(amount: number, currency = DEFAULT_CURRENCY): str
   }
 }
 
+/** Soft warning only — does not block editing of snapshot fields. */
 export function isFinanciallyLocked(invoice: Pick<Invoice, "status" | "source">): boolean {
-  return invoice.source === "automatic" || invoice.status === "Issued" || invoice.status === "Paid";
+  return invoice.source === "automatic";
 }
 
 export function upcomingInvoices(invoices: Invoice[], limit = 4): Invoice[] {

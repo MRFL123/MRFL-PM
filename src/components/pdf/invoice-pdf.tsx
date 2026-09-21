@@ -1,7 +1,9 @@
-import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
+/* eslint-disable jsx-a11y/alt-text -- @react-pdf/renderer Image does not support alt */
+import { Document, Image, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
 import { formatDisplayDate } from "@/lib/dates";
 import { formatCurrency, type Invoice } from "@/lib/invoices";
 import { colors } from "@/components/pdf/styles";
+import { isPdfSafeImage } from "@/lib/rich-text";
 
 const styles = StyleSheet.create({
   page: {
@@ -49,6 +51,12 @@ const styles = StyleSheet.create({
   value: {
     fontSize: 11,
     fontFamily: "Helvetica-Bold",
+  },
+  clientLogo: {
+    width: 72,
+    height: 40,
+    objectFit: "contain",
+    marginBottom: 6,
   },
   box: {
     borderWidth: 1,
@@ -101,18 +109,26 @@ const styles = StyleSheet.create({
 });
 
 export function InvoicePDF({ invoice }: { invoice: Invoice }) {
+  const taxId = invoice.companyTaxId || "233421";
+  const website = invoice.companyWebsite || "www.themirrorful.com";
+  const clientLogo =
+    invoice.clientLogoUrl && isPdfSafeImage(invoice.clientLogoUrl)
+      ? invoice.clientLogoUrl
+      : null;
+
   return (
     <Document>
       <Page size="A4" style={styles.page}>
         <Text style={styles.brand}>شركة ميرورفل للرقمنة</Text>
-        <Text style={styles.muted}>Tax ID: 233421</Text>
-        <Text style={styles.muted}>www.themirrorful.com</Text>
+        <Text style={styles.muted}>Tax ID: {taxId}</Text>
+        <Text style={styles.muted}>{website}</Text>
 
         <Text style={styles.title}>Invoice {invoice.number}</Text>
 
         <View style={styles.row}>
           <View style={styles.col}>
             <Text style={styles.label}>Bill To</Text>
+            {clientLogo ? <Image src={clientLogo} style={styles.clientLogo} /> : null}
             <Text style={styles.value}>{invoice.client || "—"}</Text>
             {invoice.projectName ? (
               <Text style={styles.muted}>Project: {invoice.projectName}</Text>
@@ -151,8 +167,8 @@ export function InvoicePDF({ invoice }: { invoice: Invoice }) {
         </View>
 
         <View style={styles.footer} fixed>
-          <Text style={styles.muted}>شركة ميرورفل للرقمنة · Tax 233421</Text>
-          <Text style={styles.muted}>www.themirrorful.com</Text>
+          <Text style={styles.muted}>شركة ميرورفل للرقمنة · Tax {taxId}</Text>
+          <Text style={styles.muted}>{website}</Text>
         </View>
       </Page>
     </Document>

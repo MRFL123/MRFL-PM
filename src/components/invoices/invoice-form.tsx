@@ -101,11 +101,19 @@ function InvoiceFormFields({
     setSaving(true);
     setError(null);
     try {
+      const project =
+        projectId === "none" ? null : projects.find((row) => row.id === projectId) ?? null;
+      const milestone =
+        milestoneId === "none" || !project
+          ? null
+          : project.milestones.find((row) => row.id === milestoneId) ?? null;
       await onSubmit({
         invoiceDate: date,
         client: client.trim(),
-        projectId: projectId === "none" ? null : projectId,
-        milestoneId: milestoneId === "none" ? null : milestoneId,
+        projectId: project?.id ?? null,
+        projectName: project?.name ?? "",
+        milestoneId: milestone?.id ?? null,
+        milestoneName: milestone?.name ?? "",
         description: description.trim(),
         amount: parsedAmount,
         currency: currency.trim() || DEFAULT_CURRENCY,
