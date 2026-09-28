@@ -24,14 +24,20 @@ export function invoiceFilename(invoice: InvoiceOutput): string {
  * rendering, so the PDF never ships with a missing or placeholder logo.
  */
 export async function exportInvoicePdf(invoice: InvoiceOutput): Promise<Blob> {
-  const [{ pdf }, { InvoicePDF }, brandLogo, clientLogo] = await Promise.all([
+  const [{ pdf }, { InvoicePDF }, brandLogo, clientLogo, watermark] = await Promise.all([
     import("@react-pdf/renderer"),
     import("@/components/pdf/invoice-pdf"),
     loadInvoiceBrandLogo(),
     loadClientLogo(invoice),
+    loadPdfImage("/mirrorful-mark.png"),
   ]);
   return pdf(
-    <InvoicePDF invoice={invoice} brandLogo={brandLogo} clientLogo={clientLogo} />,
+    <InvoicePDF
+      invoice={invoice}
+      brandLogo={brandLogo}
+      clientLogo={clientLogo}
+      watermark={watermark}
+    />,
   ).toBlob();
 }
 
