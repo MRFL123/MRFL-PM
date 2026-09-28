@@ -3,7 +3,13 @@ import { Document, Image, Page, Text, View, StyleSheet } from "@react-pdf/render
 import { formatDisplayDate } from "@/lib/dates";
 import { formatCurrency, type Invoice } from "@/lib/invoices";
 import { colors } from "@/components/pdf/styles";
+import { fitPdfImage, type PdfImage } from "@/lib/pdf";
 import { isPdfSafeImage } from "@/lib/rich-text";
+
+/** Max box for the Mirrorful logo (top-left). */
+const BRAND_LOGO_BOX = { width: 160, height: 36 };
+/** Max box for the client logo (top-right). */
+const CLIENT_LOGO_BOX = { width: 120, height: 48 };
 
 const styles = StyleSheet.create({
   page: {
@@ -32,10 +38,15 @@ const styles = StyleSheet.create({
     maxWidth: "40%",
   },
   brandLogo: {
-    width: 48,
-    height: 48,
     objectFit: "contain",
-    marginBottom: 6,
+    marginBottom: 8,
+  },
+  brandFallback: {
+    fontSize: 16,
+    fontFamily: "Helvetica-Bold",
+    letterSpacing: 3,
+    color: colors.brand,
+    marginBottom: 8,
   },
   muted: {
     fontSize: 9,
@@ -69,8 +80,6 @@ const styles = StyleSheet.create({
     fontFamily: "Helvetica-Bold",
   },
   clientLogo: {
-    width: 88,
-    height: 48,
     objectFit: "contain",
   },
   box: {
@@ -123,36 +132,65 @@ const styles = StyleSheet.create({
   },
 });
 
+type LogoInput = PdfImage | string | null | undefined;
+
+/** Accept a pre-decoded PdfImage (preferred) or a PDF-safe URL string. */
+function normalizeLogo(logo: LogoInput, box: { width: number; height: number }) {
+  if (!logo) return null;
+  if (typeof logo === "string") {
+    return isPdfSafeImage(logo) ? { src: logo, ...box } : null;
+  }
+  if (!logo.src || !isPdfSafeImage(logo.src) || !logo.width || !logo.height) return null;
+  return { src: logo.src, ...fitPdfImage(logo, box.width, box.height) };
+}
+
 export function InvoicePDF({
   invoice,
   brandLogo,
+  clientLogo: clientLogoInput,
 }: {
   invoice: Invoice;
-  brandLogo?: string | null;
+  /** Mirrorful logo, rendered top-left. */
+  brandLogo?: LogoInput;
+  /** Client logo, rendered top-right. Defaults to invoice.clientLogoUrl. */
+  clientLogo?: LogoInput;
 }) {
   const taxId = invoice.companyTaxId || "233421";
   const website = invoice.companyWebsite || "www.themirrorful.com";
-  const clientLogo =
-    invoice.clientLogoUrl && isPdfSafeImage(invoice.clientLogoUrl)
-      ? invoice.clientLogoUrl
-      : null;
-  const companyLogo =
-    brandLogo && isPdfSafeImage(brandLogo) ? brandLogo : null;
+  const companyLogo = normalizeLogo(brandLogo, BRAND_LOGO_BOX);
+  const clientLogo = normalizeLogo(
+    clientLogoInput === undefined ? invoice.clientLogoUrl : clientLogoInput,
+    CLIENT_LOGO_BOX,
+  );
 
   return (
-    <Document>
+    <Document title={`Invoice ${invoice.number}`} author="Mirrorful" creator="Mirrorful">
       <Page size="A4" style={styles.page}>
         <View style={styles.headerRow}>
           <View style={styles.brandCol}>
             {companyLogo ? (
-              <Image src={companyLogo} style={styles.brandLogo} />
-            ) : null}
+              <Image
+                src={companyLogo.src}
+                style={[
+                  styles.brandLogo,
+                  { width: companyLogo.width, height: companyLogo.height },
+                ]}
+              />
+            ) : (
+              <Text style={styles.brandFallback}>MIRRORFUL</Text>
+            )}
             <Text style={styles.muted}>Tax ID: {taxId}</Text>
             <Text style={styles.muted}>{website}</Text>
           </View>
           {clientLogo ? (
             <View style={styles.clientLogoCol}>
-              <Image src={clientLogo} style={styles.clientLogo} />
+              <Image
+                src={clientLogo.src}
+                style={[
+                  styles.clientLogo,
+                  { width: clientLogo.width, height: clientLogo.height },
+                ]}
+              />
             </View>
           ) : null}
         </View>

@@ -131,16 +131,27 @@ function InvoiceDetailBody({
   const display = editing ? draftAsInvoice(current, draft) : current;
   const softLocked = isFinanciallyLocked(current);
 
+  // Outputs mirror the edit form: when the saved snapshot has no client logo,
+  // fall back to the project logo (the same default the edit form pre-fills).
+  // While editing, the draft already carries that default (or the user's removal).
+  const pdfInvoice: Invoice = editing
+    ? display
+    : {
+        ...display,
+        clientLogoUrl:
+          display.clientLogoUrl || (projectLogoUrl?.trim() ? projectLogoUrl : null),
+      };
+
   const runPdf = async (action: "download" | "print" | "preview") => {
     setBusy(action);
     try {
       if (action === "download") {
-        await downloadInvoicePdf(display);
+        await downloadInvoicePdf(pdfInvoice);
         toast.success("PDF downloaded.");
       } else if (action === "print") {
-        await printInvoicePdf(display);
+        await printInvoicePdf(pdfInvoice);
       } else {
-        await previewInvoicePdf(display);
+        await previewInvoicePdf(pdfInvoice);
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Unable to prepare PDF.");
