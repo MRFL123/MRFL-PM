@@ -219,7 +219,6 @@ export function MilestoneTable({ project }: { project: Project }) {
 
       <InvoiceDetailDialog
         invoice={viewingInvoice}
-        projectLogoUrl={project.logo}
         open={Boolean(viewingInvoice)}
         onOpenChange={(open) => {
           if (!open) setViewingInvoice(null);

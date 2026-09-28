@@ -1,7 +1,19 @@
 import { loadInvoiceBrandLogo, loadPdfImage, triggerDownload } from "@/lib/pdf";
 import type { Invoice } from "@/lib/invoices";
+import type { ResolvedInvoice } from "@/lib/invoice-resolve";
 
-export function invoiceFilename(invoice: Invoice): string {
+/** Resolved invoices carry live dashboard data; plain invoices also render. */
+type InvoiceOutput = Invoice & Partial<ResolvedInvoice>;
+
+async function loadClientLogo(invoice: InvoiceOutput) {
+  // Edited client logo first; if it can't be loaded, fall back to the live project logo.
+  const primary = await loadPdfImage(invoice.clientLogoUrl);
+  if (primary) return primary;
+  const fallback = invoice.clientLogoFallbackUrl;
+  return fallback && fallback !== invoice.clientLogoUrl ? loadPdfImage(fallback) : null;
+}
+
+export function invoiceFilename(invoice: InvoiceOutput): string {
   const safe = invoice.number.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "") || "Invoice";
   return `${safe}.pdf`;
 }
@@ -11,24 +23,24 @@ export function invoiceFilename(invoice: Invoice): string {
  * Both logos are fetched and decoded into embeddable data URLs *before*
  * rendering, so the PDF never ships with a missing or placeholder logo.
  */
-export async function exportInvoicePdf(invoice: Invoice): Promise<Blob> {
+export async function exportInvoicePdf(invoice: InvoiceOutput): Promise<Blob> {
   const [{ pdf }, { InvoicePDF }, brandLogo, clientLogo] = await Promise.all([
     import("@react-pdf/renderer"),
     import("@/components/pdf/invoice-pdf"),
     loadInvoiceBrandLogo(),
-    loadPdfImage(invoice.clientLogoUrl),
+    loadClientLogo(invoice),
   ]);
   return pdf(
     <InvoicePDF invoice={invoice} brandLogo={brandLogo} clientLogo={clientLogo} />,
   ).toBlob();
 }
 
-export async function downloadInvoicePdf(invoice: Invoice): Promise<void> {
+export async function downloadInvoicePdf(invoice: InvoiceOutput): Promise<void> {
   const blob = await exportInvoicePdf(invoice);
   triggerDownload(blob, invoiceFilename(invoice));
 }
 
-export async function previewInvoicePdf(invoice: Invoice): Promise<void> {
+export async function previewInvoicePdf(invoice: InvoiceOutput): Promise<void> {
   const blob = await exportInvoicePdf(invoice);
   const url = URL.createObjectURL(blob);
   const win = window.open(url, "_blank");
@@ -63,7 +75,7 @@ function canPrintEmbeddedPdf(): boolean {
  * hidden same-origin iframe and printed once it has finished loading; if the
  * browser cannot print an embedded PDF, fall back to opening it in a tab.
  */
-export async function printInvoicePdf(invoice: Invoice): Promise<void> {
+export async function printInvoicePdf(invoice: InvoiceOutput): Promise<void> {
   const blob = await exportInvoicePdf(invoice);
   const url = URL.createObjectURL(blob);
 

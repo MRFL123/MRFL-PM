@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Download, Eye, Pencil, Printer } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Download, Eye, Pencil, Printer, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { StatusPill } from "@/components/app/status-pill";
 import { DateField } from "@/components/date-field";
@@ -43,6 +43,15 @@ import {
   previewInvoicePdf,
   printInvoicePdf,
 } from "@/lib/export-invoice-pdf";
+import {
+  findInvoiceLinks,
+  milestoneDescriptionText,
+  resolveInvoice,
+  type InvoiceFieldSource,
+  type InvoiceLinks,
+} from "@/lib/invoice-resolve";
+import { invoiceSnapshotColumnsMissing } from "@/lib/storage/invoices";
+import { useProjects } from "@/lib/store";
 
 type BusyAction = "download" | "print" | "preview" | "save" | null;
 
@@ -62,16 +71,13 @@ type EditDraft = {
   companyWebsite: string;
 };
 
-function toDraft(invoice: Invoice, projectLogoUrl?: string | null): EditDraft {
-  // Prefer the invoice snapshot. Only pre-fill from project logo when invoice has none.
-  const clientLogoUrl =
-    invoice.clientLogoUrl ||
-    (projectLogoUrl && projectLogoUrl.trim() ? projectLogoUrl : null);
+/** Pre-fill from the resolved invoice (live dashboard data unless edited). */
+function toDraft(invoice: Invoice): EditDraft {
   return {
     number: invoice.number,
     invoiceDate: toDateInputValue(invoice.invoiceDate),
     client: invoice.client,
-    clientLogoUrl,
+    clientLogoUrl: invoice.clientLogoUrl,
     projectName: invoice.projectName,
     milestoneName: invoice.milestoneName,
     description: invoice.description,
@@ -105,16 +111,40 @@ function draftAsInvoice(invoice: Invoice, draft: EditDraft): Invoice {
   };
 }
 
+/** Draft values that follow the live dashboard (used by "Use dashboard data"). */
+function dashboardDraftValues(links: InvoiceLinks): Partial<EditDraft> {
+  const { project, milestone } = links;
+  const values: Partial<EditDraft> = {};
+  if (project) {
+    values.projectName = project.name;
+    if (project.client.trim()) values.client = project.client;
+    values.clientLogoUrl = project.logo?.trim() ? project.logo : null;
+  }
+  if (milestone) {
+    values.milestoneName = milestone.name;
+    values.description = milestoneDescriptionText(milestone);
+    values.amount = String(milestone.price ?? 0);
+    values.currency = milestone.currency || DEFAULT_CURRENCY;
+  }
+  return values;
+}
+
+function EditedHint({ source }: { source: InvoiceFieldSource }) {
+  if (source !== "edited") return null;
+  return (
+    <span className="ml-1.5 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 ring-1 ring-amber-200">
+      Edited
+    </span>
+  );
+}
+
 function InvoiceDetailBody({
   invoice,
-  projectLogoUrl = null,
   onOpenChange,
   onUpdate,
   onSaved,
 }: {
   invoice: Invoice;
-  /** Used only to pre-fill edit form when invoice.clientLogoUrl is empty. */
-  projectLogoUrl?: string | null;
   onOpenChange: (open: boolean) => void;
   onUpdate?: (
     id: string,
@@ -122,25 +152,23 @@ function InvoiceDetailBody({
   ) => Promise<Invoice>;
   onSaved?: (invoice: Invoice) => void;
 }) {
+  const { projects } = useProjects();
+  const [current, setCurrent] = useState(invoice);
+  // Live project/milestone this invoice is linked to, straight from the dashboard.
+  const links = useMemo(() => findInvoiceLinks(current, projects), [current, projects]);
+  const resolved = useMemo(() => resolveInvoice(current, links), [current, links]);
+  const projectLogoUrl = links.project?.logo ?? null;
+
   const [busy, setBusy] = useState<BusyAction>(null);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<EditDraft>(() => toDraft(invoice, projectLogoUrl));
+  const [draft, setDraft] = useState<EditDraft>(() => toDraft(resolved));
   const [error, setError] = useState<string | null>(null);
-  const [current, setCurrent] = useState(invoice);
 
-  const display = editing ? draftAsInvoice(current, draft) : current;
+  // While editing, preview the draft with the same resolution rules used after save.
+  const display = editing ? resolveInvoice(draftAsInvoice(resolved, draft), links) : resolved;
   const softLocked = isFinanciallyLocked(current);
-
-  // Outputs mirror the edit form: when the saved snapshot has no client logo,
-  // fall back to the project logo (the same default the edit form pre-fills).
-  // While editing, the draft already carries that default (or the user's removal).
-  const pdfInvoice: Invoice = editing
-    ? display
-    : {
-        ...display,
-        clientLogoUrl:
-          display.clientLogoUrl || (projectLogoUrl?.trim() ? projectLogoUrl : null),
-      };
+  const hasLiveLinks = Boolean(links.project || links.milestone);
+  const pdfInvoice = display;
 
   const runPdf = async (action: "download" | "print" | "preview") => {
     setBusy(action);
@@ -161,7 +189,7 @@ function InvoiceDetailBody({
   };
 
   const handleCancelEdit = () => {
-    setDraft(toDraft(current, projectLogoUrl));
+    setDraft(toDraft(resolved));
     setEditing(false);
     setError(null);
   };
@@ -206,10 +234,16 @@ function InvoiceDetailBody({
         companyWebsite: draft.companyWebsite.trim() || COMPANY_WEBSITE,
       });
       setCurrent(updated);
-      setDraft(toDraft(updated, projectLogoUrl));
+      setDraft(toDraft(resolveInvoice(updated, findInvoiceLinks(updated, projects))));
       setEditing(false);
       onSaved?.(updated);
-      toast.success("Invoice saved.");
+      if (invoiceSnapshotColumnsMissing()) {
+        toast.warning(
+          "Invoice saved. Project name, milestone name, client logo and company fields need migration 003 to be stored; live dashboard values are shown meanwhile.",
+        );
+      } else {
+        toast.success("Invoice saved.");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to save invoice.");
     } finally {
@@ -225,8 +259,8 @@ function InvoiceDetailBody({
         </DialogTitle>
         <DialogDescription>
           {current.source === "automatic"
-            ? "Automatic invoice created when the milestone was delivered. Edits apply only to this invoice."
-            : "Manually created invoice."}
+            ? "Automatic invoice created when the milestone was delivered. Values follow the dashboard unless edited here."
+            : "Manually created invoice. Linked project and milestone values follow the dashboard unless edited here."}
         </DialogDescription>
       </DialogHeader>
 
@@ -234,9 +268,24 @@ function InvoiceDetailBody({
         <div className="grid gap-4 text-sm">
           {softLocked ? (
             <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              This invoice was generated automatically. You can still edit its snapshot
-              fields; changes will not update the linked project or milestone.
+              This invoice was generated automatically. Fields you change here override the
+              dashboard for this invoice only; they never update the linked project or milestone.
             </p>
+          ) : null}
+
+          {hasLiveLinks ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              <span>Unchanged fields follow the linked project and milestone.</span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setDraft((prev) => ({ ...prev, ...dashboardDraftValues(links) }))}
+              >
+                <RefreshCw data-icon="inline-start" />
+                Use dashboard data
+              </Button>
+            </div>
           ) : null}
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -416,27 +465,39 @@ function InvoiceDetailBody({
             />
           </div>
           <div className="flex items-center justify-between gap-3">
-            <span className="text-muted-foreground">Client</span>
-            <span className="font-medium">{current.client || "—"}</span>
+            <span className="text-muted-foreground">Project</span>
+            <span className="font-medium">
+              {resolved.projectName || "—"}
+              <EditedHint source={resolved.fieldSources.projectName} />
+            </span>
           </div>
-          {current.clientLogoUrl ? (
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground">Client</span>
+            <span className="font-medium">
+              {resolved.client || "—"}
+              <EditedHint source={resolved.fieldSources.client} />
+            </span>
+          </div>
+          {resolved.clientLogoUrl ? (
             <div className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">Client Logo</span>
+              <span className="text-muted-foreground">
+                Client Logo
+                <EditedHint source={resolved.fieldSources.clientLogoUrl} />
+              </span>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={current.clientLogoUrl}
-                alt={current.client || "Client logo"}
+                src={resolved.clientLogoUrl}
+                alt={resolved.projectName || resolved.client || "Client logo"}
                 className="max-h-10 max-w-[6rem] object-contain"
               />
             </div>
           ) : null}
           <div className="flex items-center justify-between gap-3">
-            <span className="text-muted-foreground">Project</span>
-            <span className="font-medium">{current.projectName || "—"}</span>
-          </div>
-          <div className="flex items-center justify-between gap-3">
             <span className="text-muted-foreground">Milestone</span>
-            <span className="font-medium">{current.milestoneName || "—"}</span>
+            <span className="font-medium">
+              {resolved.milestoneName || "—"}
+              <EditedHint source={resolved.fieldSources.milestoneName} />
+            </span>
           </div>
           <div className="flex items-center justify-between gap-3">
             <span className="text-muted-foreground">Date</span>
@@ -445,12 +506,21 @@ function InvoiceDetailBody({
           <div className="flex items-center justify-between gap-3">
             <span className="text-muted-foreground">Amount</span>
             <span className="font-semibold">
-              {formatCurrency(current.amount, current.currency)}
+              {formatCurrency(resolved.amount, resolved.currency)}
+              <EditedHint source={resolved.fieldSources.amount} />
             </span>
           </div>
           <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
-            <p className="text-xs text-muted-foreground">Description</p>
-            <p className="mt-1 whitespace-pre-wrap">{current.description || "—"}</p>
+            <p className="text-xs text-muted-foreground">
+              Description
+              <EditedHint source={resolved.fieldSources.description} />
+            </p>
+            <p className="mt-1 font-medium">{resolved.descriptionTitle || "—"}</p>
+            {resolved.descriptionDetail ? (
+              <p className="mt-0.5 whitespace-pre-wrap text-muted-foreground">
+                {resolved.descriptionDetail}
+              </p>
+            ) : null}
           </div>
           {current.paymentNumber ? (
             <div className="flex items-center justify-between gap-3">
@@ -533,7 +603,7 @@ function InvoiceDetailBody({
               type="button"
               disabled={!onUpdate || busy !== null}
               onClick={() => {
-                setDraft(toDraft(current, projectLogoUrl));
+                setDraft(toDraft(resolved));
                 setEditing(true);
                 setError(null);
               }}
@@ -558,15 +628,12 @@ function InvoiceDetailBody({
 
 export function InvoiceDetailDialog({
   invoice,
-  projectLogoUrl = null,
   open,
   onOpenChange,
   onUpdate,
   onSaved,
 }: {
   invoice: Invoice | null;
-  /** Project logo used as edit-form default when invoice has no client logo. */
-  projectLogoUrl?: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onUpdate?: (
@@ -582,7 +649,6 @@ export function InvoiceDetailDialog({
           <InvoiceDetailBody
             key={`${invoice.id}:${invoice.updatedAt}:${open ? "open" : "closed"}`}
             invoice={invoice}
-            projectLogoUrl={projectLogoUrl}
             onOpenChange={onOpenChange}
             onUpdate={onUpdate}
             onSaved={onSaved}

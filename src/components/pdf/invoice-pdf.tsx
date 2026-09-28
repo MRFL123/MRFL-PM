@@ -1,7 +1,14 @@
 /* eslint-disable jsx-a11y/alt-text -- @react-pdf/renderer Image does not support alt */
 import { Document, Image, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
 import { formatDisplayDate } from "@/lib/dates";
-import { formatCurrency, type Invoice } from "@/lib/invoices";
+import {
+  COMPANY_TAX_ID,
+  COMPANY_WEBSITE,
+  DEFAULT_CURRENCY,
+  formatCurrency,
+  type Invoice,
+} from "@/lib/invoices";
+import type { ResolvedInvoice } from "@/lib/invoice-resolve";
 import { colors } from "@/components/pdf/styles";
 import { fitPdfImage, type PdfImage } from "@/lib/pdf";
 import { isPdfSafeImage } from "@/lib/rich-text";
@@ -103,7 +110,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.line,
   },
-  desc: { flex: 3 },
+  desc: { flex: 3, paddingRight: 16 },
+  descTitle: { fontSize: 10 },
+  descDetail: { fontSize: 9, color: colors.muted, marginTop: 3, lineHeight: 1.4 },
   amount: { flex: 1, textAlign: "right" },
   totalRow: {
     flexDirection: "row",
@@ -144,19 +153,32 @@ function normalizeLogo(logo: LogoInput, box: { width: number; height: number }) 
   return { src: logo.src, ...fitPdfImage(logo, box.width, box.height) };
 }
 
+/** Resolved invoice (preferred) or a plain stored invoice. */
+export type InvoicePdfData = Invoice &
+  Partial<Pick<ResolvedInvoice, "descriptionTitle" | "descriptionDetail">>;
+
 export function InvoicePDF({
   invoice,
   brandLogo,
   clientLogo: clientLogoInput,
 }: {
-  invoice: Invoice;
+  invoice: InvoicePdfData;
   /** Mirrorful logo, rendered top-left. */
   brandLogo?: LogoInput;
   /** Client logo, rendered top-right. Defaults to invoice.clientLogoUrl. */
   clientLogo?: LogoInput;
 }) {
-  const taxId = invoice.companyTaxId || "233421";
-  const website = invoice.companyWebsite || "www.themirrorful.com";
+  // Company details come from the invoice record (configured company data).
+  const taxId = invoice.companyTaxId || COMPANY_TAX_ID;
+  const website = invoice.companyWebsite || COMPANY_WEBSITE;
+  const currency = invoice.currency || DEFAULT_CURRENCY;
+  const billToName = invoice.projectName || invoice.client;
+  const billToClient = invoice.projectName ? invoice.client : "";
+  const descriptionTitle =
+    invoice.descriptionTitle ?? invoice.description.split(/\r?\n/)[0]?.trim() ?? "";
+  const descriptionDetail =
+    invoice.descriptionDetail ??
+    invoice.description.split(/\r?\n/).slice(1).join("\n").trim();
   const companyLogo = normalizeLogo(brandLogo, BRAND_LOGO_BOX);
   const clientLogo = normalizeLogo(
     clientLogoInput === undefined ? invoice.clientLogoUrl : clientLogoInput,
@@ -200,10 +222,8 @@ export function InvoicePDF({
         <View style={styles.row}>
           <View style={styles.col}>
             <Text style={styles.label}>Bill To</Text>
-            <Text style={styles.value}>{invoice.client || "—"}</Text>
-            {invoice.projectName ? (
-              <Text style={styles.muted}>Project: {invoice.projectName}</Text>
-            ) : null}
+            <Text style={styles.value}>{billToName || "—"}</Text>
+            {billToClient ? <Text style={styles.muted}>{billToClient}</Text> : null}
             {invoice.milestoneName ? (
               <Text style={styles.muted}>Milestone: {invoice.milestoneName}</Text>
             ) : null}
@@ -224,17 +244,18 @@ export function InvoicePDF({
           <Text style={[styles.amount, { fontFamily: "Helvetica-Bold" }]}>Amount</Text>
         </View>
         <View style={styles.tableRow}>
-          <Text style={styles.desc}>{invoice.description || "—"}</Text>
-          <Text style={styles.amount}>
-            {formatCurrency(invoice.amount, invoice.currency)}
-          </Text>
+          <View style={styles.desc}>
+            <Text style={styles.descTitle}>{descriptionTitle || "—"}</Text>
+            {descriptionDetail ? (
+              <Text style={styles.descDetail}>{descriptionDetail}</Text>
+            ) : null}
+          </View>
+          <Text style={styles.amount}>{formatCurrency(invoice.amount, currency)}</Text>
         </View>
 
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total</Text>
-          <Text style={styles.totalValue}>
-            {formatCurrency(invoice.amount, invoice.currency)}
-          </Text>
+          <Text style={styles.totalValue}>{formatCurrency(invoice.amount, currency)}</Text>
         </View>
 
         <View style={styles.footer} fixed>

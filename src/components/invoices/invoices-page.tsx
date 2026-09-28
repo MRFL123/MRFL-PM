@@ -369,11 +369,6 @@ export function InvoicesPage() {
 
       <InvoiceDetailDialog
         invoice={viewing}
-        projectLogoUrl={
-          viewing?.projectId
-            ? (projects.find((project) => project.id === viewing.projectId)?.logo ?? null)
-            : null
-        }
         open={Boolean(viewing)}
         onOpenChange={(open) => {
           if (!open) setViewing(null);

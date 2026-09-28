@@ -12,6 +12,15 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import type { Invoice, InvoiceInput, InvoiceStatus } from "@/lib/invoices";
 import {
+  invoiceSyncPatchForMilestone,
+  invoiceSyncPatchForProject,
+  milestoneDescriptionText,
+  resolveInvoice,
+  resolveInvoices,
+  findInvoiceLinks,
+  type ResolvedInvoice,
+} from "@/lib/invoice-resolve";
+import {
   reorderDeliveredItems,
   reorderMilestones,
   sortDeliveredItems,
@@ -41,10 +50,11 @@ interface ProjectStore {
   saveState: SaveState;
   loadError: string | null;
   projects: Project[];
-  invoices: Invoice[];
+  /** Invoices merged with live project/milestone data (see invoice-resolve). */
+  invoices: ResolvedInvoice[];
   getProject: (id: string) => Project | undefined;
-  getInvoice: (id: string) => Invoice | undefined;
-  getInvoiceForMilestone: (milestoneId: string) => Invoice | undefined;
+  getInvoice: (id: string) => ResolvedInvoice | undefined;
+  getInvoiceForMilestone: (milestoneId: string) => ResolvedInvoice | undefined;
   reload: () => Promise<void>;
   addProject: (input: ProjectInput) => Promise<Project>;
   updateProject: (id: string, input: ProjectInput) => Promise<Project>;
@@ -81,8 +91,11 @@ interface ProjectStore {
     overId: string
   ) => Promise<void>;
   importLegacyProjects: (projects: Project[]) => Promise<number>;
-  createInvoice: (input: InvoiceInput) => Promise<Invoice>;
-  updateInvoice: (id: string, input: Partial<InvoiceInput> & { status?: InvoiceStatus }) => Promise<Invoice>;
+  createInvoice: (input: InvoiceInput) => Promise<ResolvedInvoice>;
+  updateInvoice: (
+    id: string,
+    input: Partial<InvoiceInput> & { status?: InvoiceStatus },
+  ) => Promise<ResolvedInvoice>;
   deleteInvoice: (id: string) => Promise<void>;
 }
 
@@ -97,7 +110,7 @@ function requireProject(projects: Project[], id: string): Project {
 async function maybeCreateAutomaticInvoice(
   project: Project,
   previousStatus: Status | undefined,
-  milestone: Pick<Milestone, "id" | "name" | "price" | "currency" | "status">,
+  milestone: Pick<Milestone, "id" | "name" | "description" | "price" | "currency" | "status">,
 ): Promise<Invoice | null> {
   if (previousStatus === "Delivered") return null;
   if (milestone.status !== "Delivered") return null;
@@ -108,6 +121,7 @@ async function maybeCreateAutomaticInvoice(
     projectLogoUrl: project.logo,
     milestoneId: milestone.id,
     milestoneName: milestone.name,
+    milestoneDescription: milestoneDescriptionText(milestone),
     price: milestone.price,
     currency: milestone.currency,
   });
@@ -216,17 +230,56 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     [projects],
   );
 
+  // Every consumer (list, home, dialog, PDF) sees invoices merged with live
+  // dashboard data; raw stored rows stay in `invoices` for editing/sync.
+  const resolvedInvoices = useMemo(
+    () => resolveInvoices(invoices, projects),
+    [invoices, projects],
+  );
+
+  const resolveOne = useCallback(
+    (invoice: Invoice) =>
+      resolveInvoice(invoice, findInvoiceLinks(invoice, projectsRef.current)),
+    [],
+  );
+
   const getInvoice = useCallback(
-    (id: string) => invoices.find((invoice) => invoice.id === id),
-    [invoices],
+    (id: string) => resolvedInvoices.find((invoice) => invoice.id === id),
+    [resolvedInvoices],
   );
 
   const getInvoiceForMilestone = useCallback(
     (milestoneId: string) =>
-      invoices.find(
+      resolvedInvoices.find(
         (invoice) => invoice.milestoneId === milestoneId && invoice.source === "automatic",
       ),
-    [invoices],
+    [resolvedInvoices],
+  );
+
+  /**
+   * Keep stored invoice fields in step with dashboard edits so later renders
+   * never mistake a stale snapshot for an explicit invoice edit. Best-effort:
+   * a failure here never fails the dashboard save itself.
+   */
+  const syncLinkedInvoices = useCallback(
+    async (patches: Array<{ id: string; patch: Partial<InvoiceInput> }>) => {
+      if (patches.length === 0) return;
+      const results = await Promise.allSettled(
+        patches.map(({ id, patch }) => invoiceRepository.update(id, patch)),
+      );
+      const updated = new Map<string, Invoice>();
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          updated.set(result.value.id, result.value);
+        } else {
+          console.warn("Could not sync linked invoice with dashboard data.", result.reason);
+        }
+      }
+      if (updated.size > 0) {
+        setInvoices((current) => current.map((row) => updated.get(row.id) ?? row));
+      }
+    },
+    [],
   );
 
   const addProject = useCallback(
@@ -246,10 +299,17 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
         const previous = requireProject(projectsRef.current, id);
         const updated = await projectRepository.update(id, input, previous.logo);
         setProjects((current) => current.map((item) => (item.id === id ? updated : item)));
+        await syncLinkedInvoices(
+          invoicesRef.current.flatMap((invoice) => {
+            if (invoice.projectId !== id) return [];
+            const patch = invoiceSyncPatchForProject(invoice, previous, updated);
+            return patch ? [{ id: invoice.id, patch }] : [];
+          }),
+        );
         return updated;
       });
     },
-    [runSave],
+    [runSave, syncLinkedInvoices],
   );
 
   const updateProjectStatus = useCallback(
@@ -375,6 +435,16 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
           }),
         );
 
+        if (previous) {
+          await syncLinkedInvoices(
+            invoicesRef.current.flatMap((invoice) => {
+              if (invoice.milestoneId !== milestoneId) return [];
+              const patch = invoiceSyncPatchForMilestone(invoice, previous, nextMilestone);
+              return patch ? [{ id: invoice.id, patch }] : [];
+            }),
+          );
+        }
+
         const invoice = await maybeCreateAutomaticInvoice(
           project,
           previous?.status,
@@ -385,7 +455,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
         }
       });
     },
-    [runSave],
+    [runSave, syncLinkedInvoices],
   );
 
   const deleteMilestone = useCallback(
@@ -520,10 +590,10 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       return runSave(async () => {
         const invoice = await invoiceRepository.create(input, { source: "manual" });
         setInvoices((current) => [invoice, ...current.filter((row) => row.id !== invoice.id)]);
-        return invoice;
+        return resolveOne(invoice);
       });
     },
-    [runSave],
+    [runSave, resolveOne],
   );
 
   const updateInvoice = useCallback(
@@ -532,14 +602,14 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
         const existing = invoicesRef.current.find((row) => row.id === id);
         if (!existing) throw new Error("Invoice not found.");
 
-        // Snapshot fields (including amount) are independently editable on the invoice.
-        // Edits never mutate linked project/milestone rows.
+        // Invoice fields the user changes here override live dashboard data for
+        // this invoice only. Edits never mutate linked project/milestone rows.
         const updated = await invoiceRepository.update(id, input);
         setInvoices((current) => current.map((row) => (row.id === id ? updated : row)));
-        return updated;
+        return resolveOne(updated);
       });
     },
-    [runSave],
+    [runSave, resolveOne],
   );
 
   const deleteInvoice = useCallback(
@@ -559,7 +629,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       saveState,
       loadError,
       projects,
-      invoices,
+      invoices: resolvedInvoices,
       getProject,
       getInvoice,
       getInvoiceForMilestone,
@@ -588,7 +658,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       saveState,
       loadError,
       projects,
-      invoices,
+      resolvedInvoices,
       getProject,
       getInvoice,
       getInvoiceForMilestone,

@@ -15,6 +15,68 @@ function throwSaveError(error: { message?: string } | null, fallback = SAVE_ERRO
   throw new Error(error?.message || fallback);
 }
 
+/** Columns added by migration 003 (invoice snapshot/override fields). */
+const SNAPSHOT_COLUMNS = [
+  "project_name",
+  "milestone_name",
+  "client_logo_url",
+  "company_tax_id",
+  "company_website",
+] as const;
+
+let snapshotColumnsMissing = false;
+
+/**
+ * True once Supabase reported that migration 003 columns are missing. Invoices
+ * still save (without those fields) and render from live dashboard data.
+ */
+export function invoiceSnapshotColumnsMissing(): boolean {
+  return snapshotColumnsMissing;
+}
+
+function isMissingSnapshotColumnError(error: { code?: string; message?: string } | null) {
+  if (!error) return false;
+  const message = error.message ?? "";
+  const mentionsColumn = SNAPSHOT_COLUMNS.some((column) => message.includes(column));
+  return (
+    mentionsColumn &&
+    (error.code === "PGRST204" ||
+      error.code === "42703" ||
+      /schema cache|does not exist|could not find/i.test(message))
+  );
+}
+
+function withoutSnapshotColumns<T extends Record<string, unknown>>(row: T): T {
+  const copy: Record<string, unknown> = { ...row };
+  for (const column of SNAPSHOT_COLUMNS) delete copy[column];
+  return copy as T;
+}
+
+/**
+ * Run an insert/update; if it fails only because migration 003 has not been
+ * applied, retry once without the snapshot columns instead of failing.
+ */
+async function writeWithSnapshotFallback(
+  row: Record<string, unknown>,
+  write: (row: Record<string, unknown>) => PromiseLike<{
+    error: { code?: string; message?: string } | null;
+  }>,
+): Promise<void> {
+  const payload = snapshotColumnsMissing ? withoutSnapshotColumns(row) : row;
+  if (Object.keys(payload).length === 0) return;
+  const { error } = await write(payload);
+  if (!error) return;
+  if (!snapshotColumnsMissing && isMissingSnapshotColumnError(error)) {
+    snapshotColumnsMissing = true;
+    const fallback = withoutSnapshotColumns(row);
+    if (Object.keys(fallback).length === 0) return;
+    const retry = await write(fallback);
+    if (retry.error) throwSaveError(retry.error);
+    return;
+  }
+  throwSaveError(error);
+}
+
 function formatInvoiceNumber(seq: number): string {
   return `PRC${String(seq).padStart(4, "0")}`;
 }
@@ -96,7 +158,7 @@ export const supabaseInvoiceRepository = {
     const id = createId();
     const snapshots = snapshotFields(input);
 
-    const { error } = await supabase.from("invoices").insert({
+    await writeWithSnapshotFallback({
       id,
       number,
       invoice_date: input.invoiceDate || formatIsoDate(),
@@ -110,8 +172,7 @@ export const supabaseInvoiceRepository = {
       payment_number: (input.paymentNumber ?? "").trim(),
       source,
       ...snapshots,
-    });
-    if (error) throwSaveError(error);
+    }, (row) => supabase.from("invoices").insert(row));
 
     const created = await this.get(id);
     if (!created) throw new Error("Invoice was created but could not be loaded.");
@@ -148,8 +209,9 @@ export const supabaseInvoiceRepository = {
       patch.company_website = input.companyWebsite.trim() || COMPANY_WEBSITE;
     }
 
-    const { error } = await supabase.from("invoices").update(patch).eq("id", id);
-    if (error) throwSaveError(error);
+    await writeWithSnapshotFallback(patch, (row) =>
+      supabase.from("invoices").update(row).eq("id", id),
+    );
 
     const updated = await this.get(id);
     if (!updated) throw new Error("Invoice not found after update.");
@@ -170,6 +232,8 @@ export const supabaseInvoiceRepository = {
     projectLogoUrl?: string | null;
     milestoneId: string;
     milestoneName: string;
+    /** Canonical milestone description text (name + description). */
+    milestoneDescription?: string;
     price: number;
     currency: string;
   }): Promise<Invoice | null> {
@@ -187,7 +251,7 @@ export const supabaseInvoiceRepository = {
         projectName: params.projectName,
         milestoneId: params.milestoneId,
         milestoneName: params.milestoneName,
-        description: params.milestoneName,
+        description: params.milestoneDescription || params.milestoneName,
         amount: params.price,
         currency: params.currency || DEFAULT_CURRENCY,
         status: "Issued",
