@@ -66,6 +66,9 @@ export interface DeliveredItem {
 export interface Milestone {
   id: string;
   name: string;
+  description: string;
+  price: number;
+  currency: string;
   status: Status;
   startDate: string | null;
   endDate: string | null;
@@ -109,6 +112,9 @@ export interface DeliveredItemInput {
 
 export interface MilestoneInput {
   name: string;
+  description: string;
+  price: number;
+  currency: string;
   status: Status;
   startDate: string | null;
   endDate: string | null;

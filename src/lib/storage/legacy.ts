@@ -76,7 +76,24 @@ function normalizeProject(raw: unknown): Project | null {
     deliveredItems: Array.isArray(value.deliveredItems)
       ? (value.deliveredItems as Project["deliveredItems"])
       : [],
-    milestones: Array.isArray(value.milestones) ? (value.milestones as Project["milestones"]) : [],
+    milestones: Array.isArray(value.milestones)
+      ? (value.milestones as Array<Record<string, unknown>>).map((milestone, index) => ({
+          id: typeof milestone.id === "string" ? milestone.id : crypto.randomUUID(),
+          name: typeof milestone.name === "string" ? milestone.name : "Milestone",
+          description: typeof milestone.description === "string" ? milestone.description : "",
+          price:
+            typeof milestone.price === "number" && Number.isFinite(milestone.price)
+              ? milestone.price
+              : Number(milestone.price) || 0,
+          currency: typeof milestone.currency === "string" && milestone.currency
+            ? milestone.currency
+            : "EGP",
+          status: isStatus(milestone.status) ? milestone.status : "None",
+          startDate: typeof milestone.startDate === "string" ? milestone.startDate : null,
+          endDate: typeof milestone.endDate === "string" ? milestone.endDate : null,
+          order: typeof milestone.order === "number" ? milestone.order : index,
+        }))
+      : [],
     createdAt: typeof value.createdAt === "string" ? value.createdAt : new Date().toISOString(),
     updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : new Date().toISOString(),
   };

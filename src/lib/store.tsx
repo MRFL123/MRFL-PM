@@ -10,6 +10,16 @@ import {
   useState,
 } from "react";
 import { useAuth } from "@/lib/auth-context";
+import type { Invoice, InvoiceInput, InvoiceStatus } from "@/lib/invoices";
+import {
+  invoiceSyncPatchForMilestone,
+  invoiceSyncPatchForProject,
+  milestoneDescriptionText,
+  resolveInvoice,
+  resolveInvoices,
+  findInvoiceLinks,
+  type ResolvedInvoice,
+} from "@/lib/invoice-resolve";
 import {
   reorderDeliveredItems,
   reorderMilestones,
@@ -17,11 +27,12 @@ import {
   sortMilestones,
   touchProject,
 } from "@/lib/projects";
-import { projectRepository } from "@/lib/storage";
+import { invoiceRepository, projectRepository } from "@/lib/storage";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type {
   DeliveredItemInput,
+  Milestone,
   MilestoneInput,
   Project,
   ProjectDashboardData,
@@ -39,7 +50,11 @@ interface ProjectStore {
   saveState: SaveState;
   loadError: string | null;
   projects: Project[];
+  /** Invoices merged with live project/milestone data (see invoice-resolve). */
+  invoices: ResolvedInvoice[];
   getProject: (id: string) => Project | undefined;
+  getInvoice: (id: string) => ResolvedInvoice | undefined;
+  getInvoiceForMilestone: (milestoneId: string) => ResolvedInvoice | undefined;
   reload: () => Promise<void>;
   addProject: (input: ProjectInput) => Promise<Project>;
   updateProject: (id: string, input: ProjectInput) => Promise<Project>;
@@ -76,6 +91,12 @@ interface ProjectStore {
     overId: string
   ) => Promise<void>;
   importLegacyProjects: (projects: Project[]) => Promise<number>;
+  createInvoice: (input: InvoiceInput) => Promise<ResolvedInvoice>;
+  updateInvoice: (
+    id: string,
+    input: Partial<InvoiceInput> & { status?: InvoiceStatus },
+  ) => Promise<ResolvedInvoice>;
+  deleteInvoice: (id: string) => Promise<void>;
 }
 
 const ProjectStoreContext = createContext<ProjectStore | null>(null);
@@ -86,27 +107,63 @@ function requireProject(projects: Project[], id: string): Project {
   return project;
 }
 
+async function maybeCreateAutomaticInvoice(
+  project: Project,
+  previousStatus: Status | undefined,
+  milestone: Pick<Milestone, "id" | "name" | "description" | "price" | "currency" | "status">,
+): Promise<Invoice | null> {
+  if (previousStatus === "Delivered") return null;
+  if (milestone.status !== "Delivered") return null;
+  return invoiceRepository.createAutomaticForDeliveredMilestone({
+    projectId: project.id,
+    projectName: project.name,
+    projectClient: project.client,
+    projectLogoUrl: project.logo,
+    milestoneId: milestone.id,
+    milestoneName: milestone.name,
+    milestoneDescription: milestoneDescriptionText(milestone),
+    price: milestone.price,
+    currency: milestone.currency,
+  });
+}
+
 export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const { signedIn, ready: authReady } = useAuth();
   const [ready, setReady] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const projectsRef = useRef(projects);
-  projectsRef.current = projects;
+  const invoicesRef = useRef(invoices);
+
+  useEffect(() => {
+    projectsRef.current = projects;
+  }, [projects]);
+
+  useEffect(() => {
+    invoicesRef.current = invoices;
+  }, [invoices]);
 
   const reload = useCallback(async () => {
-    const loaded = await projectRepository.list();
-    setProjects(loaded);
+    const [loadedProjects, loadedInvoices] = await Promise.all([
+      projectRepository.list(),
+      invoiceRepository.list().catch(() => [] as Invoice[]),
+    ]);
+    setProjects(loadedProjects);
+    setInvoices(loadedInvoices);
     setLoadError(null);
   }, []);
 
   useEffect(() => {
     if (!authReady) return;
     if (!signedIn) {
+      /* eslint-disable react-hooks/set-state-in-effect -- clear workspace when signed out */
       setProjects([]);
+      setInvoices([]);
       setReady(true);
       setLoadError(null);
+      /* eslint-enable react-hooks/set-state-in-effect */
       return;
     }
 
@@ -117,6 +174,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
         if (!cancelled) {
           setLoadError(error instanceof Error ? error.message : "Unable to load projects.");
           setProjects([]);
+          setInvoices([]);
         }
       })
       .finally(() => {
@@ -139,6 +197,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "project_prerequisites" }, schedule)
       .on("postgres_changes", { event: "*", schema: "public", table: "project_milestones" }, schedule)
       .on("postgres_changes", { event: "*", schema: "public", table: "project_delivered_items" }, schedule)
+      .on("postgres_changes", { event: "*", schema: "public", table: "invoices" }, schedule)
       .subscribe();
 
     function schedule() {
@@ -171,6 +230,58 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     [projects],
   );
 
+  // Every consumer (list, home, dialog, PDF) sees invoices merged with live
+  // dashboard data; raw stored rows stay in `invoices` for editing/sync.
+  const resolvedInvoices = useMemo(
+    () => resolveInvoices(invoices, projects),
+    [invoices, projects],
+  );
+
+  const resolveOne = useCallback(
+    (invoice: Invoice) =>
+      resolveInvoice(invoice, findInvoiceLinks(invoice, projectsRef.current)),
+    [],
+  );
+
+  const getInvoice = useCallback(
+    (id: string) => resolvedInvoices.find((invoice) => invoice.id === id),
+    [resolvedInvoices],
+  );
+
+  const getInvoiceForMilestone = useCallback(
+    (milestoneId: string) =>
+      resolvedInvoices.find(
+        (invoice) => invoice.milestoneId === milestoneId && invoice.source === "automatic",
+      ),
+    [resolvedInvoices],
+  );
+
+  /**
+   * Keep stored invoice fields in step with dashboard edits so later renders
+   * never mistake a stale snapshot for an explicit invoice edit. Best-effort:
+   * a failure here never fails the dashboard save itself.
+   */
+  const syncLinkedInvoices = useCallback(
+    async (patches: Array<{ id: string; patch: Partial<InvoiceInput> }>) => {
+      if (patches.length === 0) return;
+      const results = await Promise.allSettled(
+        patches.map(({ id, patch }) => invoiceRepository.update(id, patch)),
+      );
+      const updated = new Map<string, Invoice>();
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          updated.set(result.value.id, result.value);
+        } else {
+          console.warn("Could not sync linked invoice with dashboard data.", result.reason);
+        }
+      }
+      if (updated.size > 0) {
+        setInvoices((current) => current.map((row) => updated.get(row.id) ?? row));
+      }
+    },
+    [],
+  );
+
   const addProject = useCallback(
     async (input: ProjectInput) => {
       return runSave(async () => {
@@ -188,10 +299,17 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
         const previous = requireProject(projectsRef.current, id);
         const updated = await projectRepository.update(id, input, previous.logo);
         setProjects((current) => current.map((item) => (item.id === id ? updated : item)));
+        await syncLinkedInvoices(
+          invoicesRef.current.flatMap((invoice) => {
+            if (invoice.projectId !== id) return [];
+            const patch = invoiceSyncPatchForProject(invoice, previous, updated);
+            return patch ? [{ id: invoice.id, patch }] : [];
+          }),
+        );
         return updated;
       });
     },
-    [runSave],
+    [runSave, syncLinkedInvoices],
   );
 
   const updateProjectStatus = useCallback(
@@ -248,6 +366,13 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
         const previous = requireProject(projectsRef.current, id);
         await projectRepository.delete(id, previous.logo);
         setProjects((current) => current.filter((project) => project.id !== id));
+        setInvoices((current) =>
+          current.map((invoice) =>
+            invoice.projectId === id
+              ? { ...invoice, projectId: null, projectName: "" }
+              : invoice,
+          ),
+        );
       });
     },
     [runSave],
@@ -271,6 +396,11 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
               : item,
           ),
         );
+
+        const invoice = await maybeCreateAutomaticInvoice(project, undefined, milestone);
+        if (invoice) {
+          setInvoices((current) => [invoice, ...current.filter((row) => row.id !== invoice.id)]);
+        }
       });
     },
     [runSave],
@@ -279,28 +409,53 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const updateMilestone = useCallback(
     async (projectId: string, milestoneId: string, input: MilestoneInput) => {
       await runSave(async () => {
+        const project = requireProject(projectsRef.current, projectId);
+        const previous = project.milestones.find((m) => m.id === milestoneId);
         await projectRepository.updateMilestone(projectId, milestoneId, input);
+        const nextMilestone = {
+          id: milestoneId,
+          name: input.name.trim(),
+          description: (input.description ?? "").trim(),
+          price: Number.isFinite(input.price) ? Number(input.price) : 0,
+          currency: (input.currency || "EGP").trim() || "EGP",
+          status: input.status,
+          startDate: input.startDate,
+          endDate: input.endDate,
+          order: previous?.order ?? 0,
+        };
+
         setProjects((current) =>
-          current.map((project) => {
-            if (project.id !== projectId) return project;
-            return touchProject(project, {
-              milestones: project.milestones.map((milestone) =>
-                milestone.id === milestoneId
-                  ? {
-                      ...milestone,
-                      name: input.name.trim(),
-                      status: input.status,
-                      startDate: input.startDate,
-                      endDate: input.endDate,
-                    }
-                  : milestone,
+          current.map((row) => {
+            if (row.id !== projectId) return row;
+            return touchProject(row, {
+              milestones: row.milestones.map((milestone) =>
+                milestone.id === milestoneId ? { ...milestone, ...nextMilestone } : milestone,
               ),
             });
           }),
         );
+
+        if (previous) {
+          await syncLinkedInvoices(
+            invoicesRef.current.flatMap((invoice) => {
+              if (invoice.milestoneId !== milestoneId) return [];
+              const patch = invoiceSyncPatchForMilestone(invoice, previous, nextMilestone);
+              return patch ? [{ id: invoice.id, patch }] : [];
+            }),
+          );
+        }
+
+        const invoice = await maybeCreateAutomaticInvoice(
+          project,
+          previous?.status,
+          nextMilestone,
+        );
+        if (invoice) {
+          setInvoices((current) => [invoice, ...current.filter((row) => row.id !== invoice.id)]);
+        }
       });
     },
-    [runSave],
+    [runSave, syncLinkedInvoices],
   );
 
   const deleteMilestone = useCallback(
@@ -314,6 +469,13 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
         setProjects((current) =>
           current.map((item) =>
             item.id === projectId ? touchProject(item, { milestones: remaining }) : item,
+          ),
+        );
+        setInvoices((current) =>
+          current.map((invoice) =>
+            invoice.milestoneId === milestoneId
+              ? { ...invoice, milestoneId: null, milestoneName: "" }
+              : invoice,
           ),
         );
       });
@@ -423,6 +585,43 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     [runSave],
   );
 
+  const createInvoice = useCallback(
+    async (input: InvoiceInput) => {
+      return runSave(async () => {
+        const invoice = await invoiceRepository.create(input, { source: "manual" });
+        setInvoices((current) => [invoice, ...current.filter((row) => row.id !== invoice.id)]);
+        return resolveOne(invoice);
+      });
+    },
+    [runSave, resolveOne],
+  );
+
+  const updateInvoice = useCallback(
+    async (id: string, input: Partial<InvoiceInput> & { status?: InvoiceStatus }) => {
+      return runSave(async () => {
+        const existing = invoicesRef.current.find((row) => row.id === id);
+        if (!existing) throw new Error("Invoice not found.");
+
+        // Invoice fields the user changes here override live dashboard data for
+        // this invoice only. Edits never mutate linked project/milestone rows.
+        const updated = await invoiceRepository.update(id, input);
+        setInvoices((current) => current.map((row) => (row.id === id ? updated : row)));
+        return resolveOne(updated);
+      });
+    },
+    [runSave, resolveOne],
+  );
+
+  const deleteInvoice = useCallback(
+    async (id: string) => {
+      await runSave(async () => {
+        await invoiceRepository.delete(id);
+        setInvoices((current) => current.filter((row) => row.id !== id));
+      });
+    },
+    [runSave],
+  );
+
   const value = useMemo<ProjectStore>(
     () => ({
       ready,
@@ -430,7 +629,10 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       saveState,
       loadError,
       projects,
+      invoices: resolvedInvoices,
       getProject,
+      getInvoice,
+      getInvoiceForMilestone,
       reload,
       addProject,
       updateProject,
@@ -447,13 +649,19 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       deleteDeliveredItem,
       moveDeliveredItem,
       importLegacyProjects,
+      createInvoice,
+      updateInvoice,
+      deleteInvoice,
     }),
     [
       ready,
       saveState,
       loadError,
       projects,
+      resolvedInvoices,
       getProject,
+      getInvoice,
+      getInvoiceForMilestone,
       reload,
       addProject,
       updateProject,
@@ -470,6 +678,9 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       deleteDeliveredItem,
       moveDeliveredItem,
       importLegacyProjects,
+      createInvoice,
+      updateInvoice,
+      deleteInvoice,
     ],
   );
 
